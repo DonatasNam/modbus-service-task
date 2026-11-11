@@ -75,7 +75,7 @@ static MbpStatus WakeThread(void);
 static MbpStatus CloseFd(int *fd);
 static MbpStatus PollLoop(void);
 static MbpStatus PollOnce(void);
-static MbpStatus RetryPoll(int pollErrno);
+static MbpStatus RetryPoll(void);
 static MbpStatus AcceptClients(uint64_t nowMs);
 static MbpStatus AddClient(int fd, uint64_t nowMs);
 static MbpStatus SetSendBuffer(int fd);
@@ -140,7 +140,7 @@ static MbpStatus PollOnce(void) {
 
     const nfds_t count = FillPollSet(fds, slotClients);
     if (poll(fds, count, IdleTimeoutMs(nowMs)) < 0) {
-        return RetryPoll(errno);
+        return RetryPoll();
     }
     ipc.pollRetries = 0u;
     if (fds[STOP_SLOT].revents != 0) {
@@ -160,20 +160,18 @@ static MbpStatus PollOnce(void) {
     return ReapIdle(nowMs);
 }
 
-// EINTR polls again at once. EAGAIN and ENOMEM (the kernel short of memory) wait POLL_RETRY_WAIT_MS on the stop
-// eventfd alone, so the thread neither spins nor misses a stop; past POLL_RETRY_MAX in a row, or on any other errno,
-// the server fails and IpcMain stops the service.
-static MbpStatus RetryPoll(int pollErrno) {
+// Runs right after the failed poll(), while errno is still its own. The wait polls the stop eventfd alone, so a kernel
+// short of memory neither spins the thread nor delays a stop.
+static MbpStatus RetryPoll(void) {
+    const int pollErrno = errno;
     if (pollErrno == EINTR) {
         return MbpStatusOk;
     }
-    if (((pollErrno != EAGAIN) && (pollErrno != ENOMEM)) || (ipc.pollRetries >= POLL_RETRY_MAX)) {
-        errno = pollErrno;
-        return MbpStatusOs;
-    }
+    const MbpStatus ret = (((pollErrno == EAGAIN) || (pollErrno == ENOMEM)) && (ipc.pollRetries < POLL_RETRY_MAX)) ? MbpStatusOk : MbpStatusOs;
+    MBP_ASSERT_ERRNO(ret);
     ipc.pollRetries++;
     struct pollfd stop = { .fd = ipc.stopFd, .events = POLLIN, .revents = 0 };
-    if ((poll(&stop, 1u, POLL_RETRY_WAIT_MS) > 0) && (stop.revents != 0)) {
+    if ((poll(&stop, 1u, POLL_RETRY_WAIT_MS) > 0) && (stop.revents != 0)) {      // a failed wait polls again at once; POLL_RETRY_MAX still bounds the loop
         return MbpStatusStopped;
     }
     return MbpStatusOk;
