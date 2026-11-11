@@ -1,8 +1,10 @@
 add_library(mbp STATIC
     src/mbp.c
+    src/mbp_clock.c
     src/mbp_config.c
     src/mbp_config_field.c
     src/mbp_decode.c
+    src/mbp_sched.c
 )
 target_include_directories(mbp PUBLIC include PRIVATE src)
 target_compile_definitions(mbp PRIVATE MBP_VERBOSE_ERRORS=$<BOOL:${MBP_VERBOSE_ERRORS}>)
@@ -18,3 +20,4 @@ endfunction()
 
 mbp_add_test(decode)
 mbp_add_test(config)
+mbp_add_test(sched)
