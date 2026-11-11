@@ -7,6 +7,7 @@ add_library(mbp STATIC
     src/mbp_health.c
     src/mbp_link.c
     src/mbp_poller.c
+    src/mbp_proto.c
     src/mbp_sched.c
     src/mbp_store.c
 )
@@ -26,3 +27,4 @@ mbp_add_test(decode)
 mbp_add_test(config)
 mbp_add_test(sched)
 mbp_add_test(health)
+mbp_add_test(proto)
