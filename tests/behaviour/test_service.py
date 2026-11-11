@@ -48,6 +48,7 @@ INVALID_CONFIGS = {
     "name_control_char.json": "modbus_tcp[0].stations[0].name",
     "scale_overflow.json": "modbus_tcp[0].stations[0].datapoints[0].meta.scale",
     "truncated.json": "config is not valid JSON",
+    "trailing_text.json": "config is not valid JSON",
 }
 CONFIG_EXIT_LIMIT_S = 2.0
 CYCLE_TOLERANCE_S = 0.25
