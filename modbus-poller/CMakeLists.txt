@@ -1,5 +1,7 @@
 add_library(mbp STATIC
     src/mbp.c
+    src/mbp_config.c
+    src/mbp_config_field.c
     src/mbp_decode.c
 )
 target_include_directories(mbp PUBLIC include PRIVATE src)
@@ -15,3 +17,4 @@ function(mbp_add_test name)
 endfunction()
 
 mbp_add_test(decode)
+mbp_add_test(config)

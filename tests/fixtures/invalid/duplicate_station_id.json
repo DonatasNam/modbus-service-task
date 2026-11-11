@@ -1,0 +1,6 @@
+{"modbus_tcp": [{"name": "Gateway", "conn_type": "tcp", "tcp_host": "127.0.0.1", "tcp_port": "15020", "request_retries": "3", "request_timeout": "2000", "connect_retries": "3", "connect_timeout": "5000", "enable": "true",
+    "stations": [{"station_addr": "1", "id": "1", "name": "Meter", "datapoints": [
+        {"id": "1", "func_code": "4", "data_type": "float32", "byte_order": "ABCD", "reg_size": "2", "start_addr": "0", "acq_cycle": "1000", "meta": {"descr": "Volts", "scale": "1", "units": "V"}}
+    ]}, {"station_addr": "2", "id": "1", "name": "Meter two", "datapoints": [
+        {"id": "1", "func_code": "4", "data_type": "float32", "byte_order": "ABCD", "reg_size": "2", "start_addr": "0", "acq_cycle": "1000", "meta": {"descr": "Volts", "scale": "1", "units": "V"}}
+    ]}]}]}

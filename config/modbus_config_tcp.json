@@ -1,0 +1,395 @@
+{
+    "modbus_tcp": [
+        {
+            "name": "Modbus TCP Client 1",
+            "conn_type": "tcp",
+            "tcp_host": "192.168.200.1",
+            "tcp_port": "502",
+            "request_retries": "3",
+            "request_timeout": "2000",
+            "connect_retries": "3",
+            "connect_timeout": "5000",
+            "enable": "true",
+            "stations": [
+                {
+                    "station_addr": "1",
+                    "id": "1",
+                    "name": "Electricity Meter Ser. EM1276",
+                    "datapoints": [
+                        {
+                            "acq_cycle": "1000",
+                            "byte_order": "ABCD",
+                            "data_type": "float32",
+                            "func_code": "4",
+                            "id": "1",
+                            "reg_size": "2",
+                            "start_addr": "0",
+                            "meta": {
+                                "descr": "Phase 1 line to neutral volts",
+                                "scale": "1",
+                                "units": "V"
+                            }
+                        },
+                        {
+                            "acq_cycle": "1000",
+                            "byte_order": "ABCD",
+                            "data_type": "float32",
+                            "func_code": "4",
+                            "id": "2",
+                            "reg_size": "2",
+                            "start_addr": "2",
+                            "meta": {
+                                "descr": "Phase 2 line to neutral volts",
+                                "scale": "1",
+                                "units": "V"
+                            }
+                        },
+                        {
+                            "acq_cycle": "1000",
+                            "byte_order": "ABCD",
+                            "data_type": "float32",
+                            "func_code": "4",
+                            "id": "3",
+                            "reg_size": "2",
+                            "start_addr": "4",
+                            "meta": {
+                                "descr": "Phase 3 line to neutral volts",
+                                "scale": "1",
+                                "units": "V"
+                            }
+                        },
+                        {
+                            "acq_cycle": "1000",
+                            "byte_order": "ABCD",
+                            "data_type": "float32",
+                            "func_code": "4",
+                            "id": "4",
+                            "reg_size": "2",
+                            "start_addr": "6",
+                            "meta": {
+                                "descr": "Phase 1 current",
+                                "scale": "1",
+                                "units": "A"
+                            }
+                        },
+                        {
+                            "acq_cycle": "1000",
+                            "byte_order": "ABCD",
+                            "data_type": "float32",
+                            "func_code": "4",
+                            "id": "5",
+                            "reg_size": "2",
+                            "start_addr": "8",
+                            "meta": {
+                                "descr": "Phase 2 current",
+                                "scale": "1",
+                                "units": "A"
+                            }
+                        },
+                        {
+                            "acq_cycle": "1000",
+                            "byte_order": "ABCD",
+                            "data_type": "float32",
+                            "func_code": "4",
+                            "id": "6",
+                            "reg_size": "2",
+                            "start_addr": "10",
+                            "meta": {
+                                "descr": "Phase 3 current",
+                                "scale": "1",
+                                "units": "A"
+                            }
+                        },
+                        {
+                            "acq_cycle": "10000",
+                            "byte_order": "ABCD",
+                            "data_type": "float32",
+                            "func_code": "4",
+                            "id": "12",
+                            "reg_size": "2",
+                            "start_addr": "52",
+                            "meta": {
+                                "descr": "Total system power",
+                                "scale": "0.001",
+                                "units": "kW"
+                            }
+                        },
+                        {
+                            "acq_cycle": "10000",
+                            "byte_order": "ABCD",
+                            "data_type": "float32",
+                            "func_code": "4",
+                            "id": "13",
+                            "reg_size": "2",
+                            "start_addr": "56",
+                            "meta": {
+                                "descr": "Total system volt amps",
+                                "scale": "0.001",
+                                "units": "kVA"
+                            }
+                        },
+                        {
+                            "acq_cycle": "10000",
+                            "byte_order": "ABCD",
+                            "data_type": "float32",
+                            "func_code": "4",
+                            "id": "14",
+                            "reg_size": "2",
+                            "start_addr": "60",
+                            "meta": {
+                                "descr": "Total system VAr",
+                                "scale": "0.001",
+                                "units": "kVAr"
+                            }
+                        },
+                        {
+                            "acq_cycle": "3600000",
+                            "byte_order": "ABCD",
+                            "data_type": "float32",
+                            "func_code": "4",
+                            "id": "16",
+                            "reg_size": "2",
+                            "start_addr": "72",
+                            "meta": {
+                                "descr": "Total Import kWh",
+                                "scale": "1",
+                                "units": "kWh"
+                            }
+                        },
+                        {
+                            "acq_cycle": "3600000",
+                            "byte_order": "ABCD",
+                            "data_type": "float32",
+                            "func_code": "4",
+                            "id": "17",
+                            "reg_size": "2",
+                            "start_addr": "74",
+                            "meta": {
+                                "descr": "Total Export kWh",
+                                "scale": "1",
+                                "units": "kWh"
+                            }
+                        },
+                        {
+                            "acq_cycle": "3600000",
+                            "byte_order": "ABCD",
+                            "data_type": "float32",
+                            "func_code": "4",
+                            "id": "18",
+                            "reg_size": "2",
+                            "start_addr": "76",
+                            "meta": {
+                                "descr": "Total Import kVArh",
+                                "scale": "1",
+                                "units": "kVArh"
+                            }
+                        },
+                        {
+                            "acq_cycle": "3600000",
+                            "byte_order": "ABCD",
+                            "data_type": "float32",
+                            "func_code": "4",
+                            "id": "19",
+                            "reg_size": "2",
+                            "start_addr": "78",
+                            "meta": {
+                                "descr": "Total Export kVArh",
+                                "scale": "1",
+                                "units": "kVArh"
+                            }
+                        }
+                    ]
+                },
+                {
+                    "station_addr": "2",
+                    "id": "2",
+                    "name": "Electricity Meter Ser. EM1277",
+                    "datapoints": [
+                        {
+                            "acq_cycle": "1000",
+                            "byte_order": "ABCD",
+                            "data_type": "float32",
+                            "func_code": "4",
+                            "id": "1",
+                            "reg_size": "2",
+                            "start_addr": "0",
+                            "meta": {
+                                "descr": "Phase 1 line to neutral volts",
+                                "scale": "1",
+                                "units": "V"
+                            }
+                        },
+                        {
+                            "acq_cycle": "1000",
+                            "byte_order": "ABCD",
+                            "data_type": "float32",
+                            "func_code": "4",
+                            "id": "2",
+                            "reg_size": "2",
+                            "start_addr": "2",
+                            "meta": {
+                                "descr": "Phase 2 line to neutral volts",
+                                "scale": "1",
+                                "units": "V"
+                            }
+                        },
+                        {
+                            "acq_cycle": "1000",
+                            "byte_order": "ABCD",
+                            "data_type": "float32",
+                            "func_code": "4",
+                            "id": "3",
+                            "reg_size": "2",
+                            "start_addr": "4",
+                            "meta": {
+                                "descr": "Phase 3 line to neutral volts",
+                                "scale": "1",
+                                "units": "V"
+                            }
+                        },
+                        {
+                            "acq_cycle": "1000",
+                            "byte_order": "ABCD",
+                            "data_type": "float32",
+                            "func_code": "4",
+                            "id": "4",
+                            "reg_size": "2",
+                            "start_addr": "6",
+                            "meta": {
+                                "descr": "Phase 1 current",
+                                "scale": "1",
+                                "units": "A"
+                            }
+                        },
+                        {
+                            "acq_cycle": "1000",
+                            "byte_order": "ABCD",
+                            "data_type": "float32",
+                            "func_code": "4",
+                            "id": "5",
+                            "reg_size": "2",
+                            "start_addr": "8",
+                            "meta": {
+                                "descr": "Phase 2 current",
+                                "scale": "1",
+                                "units": "A"
+                            }
+                        },
+                        {
+                            "acq_cycle": "1000",
+                            "byte_order": "ABCD",
+                            "data_type": "float32",
+                            "func_code": "4",
+                            "id": "6",
+                            "reg_size": "2",
+                            "start_addr": "10",
+                            "meta": {
+                                "descr": "Phase 3 current",
+                                "scale": "1",
+                                "units": "A"
+                            }
+                        },
+                        {
+                            "acq_cycle": "10000",
+                            "byte_order": "ABCD",
+                            "data_type": "float32",
+                            "func_code": "4",
+                            "id": "12",
+                            "reg_size": "2",
+                            "start_addr": "52",
+                            "meta": {
+                                "descr": "Total system power",
+                                "scale": "0.001",
+                                "units": "kW"
+                            }
+                        },
+                        {
+                            "acq_cycle": "10000",
+                            "byte_order": "ABCD",
+                            "data_type": "float32",
+                            "func_code": "4",
+                            "id": "13",
+                            "reg_size": "2",
+                            "start_addr": "56",
+                            "meta": {
+                                "descr": "Total system volt amps",
+                                "scale": "0.001",
+                                "units": "kVA"
+                            }
+                        },
+                        {
+                            "acq_cycle": "10000",
+                            "byte_order": "ABCD",
+                            "data_type": "float32",
+                            "func_code": "4",
+                            "id": "14",
+                            "reg_size": "2",
+                            "start_addr": "60",
+                            "meta": {
+                                "descr": "Total system VAr",
+                                "scale": "0.001",
+                                "units": "kVAr"
+                            }
+                        },
+                        {
+                            "acq_cycle": "3600000",
+                            "byte_order": "ABCD",
+                            "data_type": "float32",
+                            "func_code": "4",
+                            "id": "16",
+                            "reg_size": "2",
+                            "start_addr": "72",
+                            "meta": {
+                                "descr": "Total Import kWh",
+                                "scale": "1",
+                                "units": "kWh"
+                            }
+                        },
+                        {
+                            "acq_cycle": "3600000",
+                            "byte_order": "ABCD",
+                            "data_type": "float32",
+                            "func_code": "4",
+                            "id": "17",
+                            "reg_size": "2",
+                            "start_addr": "74",
+                            "meta": {
+                                "descr": "Total Export kWh",
+                                "scale": "1",
+                                "units": "kWh"
+                            }
+                        },
+                        {
+                            "acq_cycle": "3600000",
+                            "byte_order": "ABCD",
+                            "data_type": "float32",
+                            "func_code": "4",
+                            "id": "18",
+                            "reg_size": "2",
+                            "start_addr": "76",
+                            "meta": {
+                                "descr": "Total Import kVArh",
+                                "scale": "1",
+                                "units": "kVArh"
+                            }
+                        },
+                        {
+                            "acq_cycle": "3600000",
+                            "byte_order": "ABCD",
+                            "data_type": "float32",
+                            "func_code": "4",
+                            "id": "19",
+                            "reg_size": "2",
+                            "start_addr": "78",
+                            "meta": {
+                                "descr": "Total Export kVArh",
+                                "scale": "1",
+                                "units": "kVArh"
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}
