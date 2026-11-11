@@ -4,6 +4,7 @@ add_library(mbp STATIC
     src/mbp_config.c
     src/mbp_config_field.c
     src/mbp_decode.c
+    src/mbp_health.c
     src/mbp_sched.c
 )
 target_include_directories(mbp PUBLIC include PRIVATE src)
@@ -21,3 +22,4 @@ endfunction()
 mbp_add_test(decode)
 mbp_add_test(config)
 mbp_add_test(sched)
+mbp_add_test(health)
