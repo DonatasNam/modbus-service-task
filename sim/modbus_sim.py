@@ -245,10 +245,9 @@ async def handle_control(simulator: Simulator, reader: asyncio.StreamReader, wri
         writer.close()
 
 
-async def run(args: argparse.Namespace, registers: RegisterMap, units: List[int]) -> None:
-    """Serves Modbus TCP and the control socket until SIGTERM or SIGINT; the exit cleanup runs after both servers closed."""
+async def run(args: argparse.Namespace, registers: RegisterMap, units: List[int], control_path: Path) -> None:
+    """Serves Modbus TCP and the control socket until SIGTERM or SIGINT."""
     simulator = Simulator(registers, units, args.serial_bus)
-    control_path = Path(args.control)
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for stop_signal in (signal.SIGTERM, signal.SIGINT):
@@ -263,8 +262,6 @@ async def run(args: argparse.Namespace, registers: RegisterMap, units: List[int]
         control_server.close()
         for writer in list(simulator.writers):
             writer.close()
-        if control_path.exists():
-            control_path.unlink()
 
 
 def parse_args(argv: List[str]) -> argparse.Namespace:
@@ -282,9 +279,11 @@ def main(argv: List[str]) -> int:
     config = json.loads(Path(args.config).read_text(encoding="utf-8"))
     registers, units = build_registers(config["modbus_tcp"][args.connection])
     control_path = Path(args.control)
-    if control_path.exists():
-        control_path.unlink()
-    asyncio.run(run(args, registers, units))
+    control_path.unlink(missing_ok=True)
+    try:
+        asyncio.run(run(args, registers, units, control_path))
+    finally:
+        control_path.unlink(missing_ok=True)
     return 0
 
 
