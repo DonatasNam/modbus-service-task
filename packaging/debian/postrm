@@ -1,0 +1,18 @@
+#!/bin/sh
+# On purge: removes the configuration folder, the service user and its group.
+set -e
+
+if [ "$1" = "purge" ]; then
+    rm -rf /etc/modbus-poller
+    if getent passwd modbus-poller >/dev/null; then
+        deluser --system modbus-poller || true
+    fi
+    if getent group modbus-poller >/dev/null; then
+        delgroup --system modbus-poller || true
+    fi
+fi
+if [ -d /run/systemd/system ]; then
+    systemctl daemon-reload || true
+fi
+
+exit 0
