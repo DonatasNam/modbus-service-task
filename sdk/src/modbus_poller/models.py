@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Literal, Mapping, Optional, Tuple, cast
+from typing import Any, Literal, Mapping, Optional, Tuple, cast, get_args
 
 from .errors import ProtocolError
 
 State = Literal["connecting", "online", "error", "offline", "disabled"]
 Quality = Literal["none", "good", "stale", "bad"]
-STATES: Tuple[str, ...] = ("connecting", "online", "error", "offline", "disabled")
-QUALITIES: Tuple[str, ...] = ("none", "good", "stale", "bad")
+STATES: Tuple[str, ...] = get_args(State)
+QUALITIES: Tuple[str, ...] = get_args(Quality)
 MS_PER_SECOND = 1000.0
 
 
@@ -36,7 +36,7 @@ def _optional_text(data: Mapping[str, Any], key: str) -> Optional[str]:
     return value
 
 
-def _count(data: Mapping[str, Any], key: str) -> int:
+def _non_negative_int(data: Mapping[str, Any], key: str) -> int:
     value = data.get(key)
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise ProtocolError(f"field {key!r} is not a non-negative integer")
@@ -98,10 +98,10 @@ class Device:
             name=_text(item, "name"),
             connection=_text(item, "connection"),
             host=_text(item, "host"),
-            port=_count(item, "port"),
-            unit=_count(item, "unit"),
+            port=_non_negative_int(item, "port"),
+            unit=_non_negative_int(item, "unit"),
             enabled=_flag(item, "enabled"),
-            point_count=_count(item, "points"),
+            point_count=_non_negative_int(item, "points"),
         )
 
 
@@ -133,9 +133,9 @@ class DeviceStatus:
             since=_time(item, "since"),
             last_ok=_time(item, "last_ok"),
             last_error=_optional_text(item, "last_error"),
-            reads_ok=_count(item, "reads_ok"),
-            reads_failed=_count(item, "reads_failed"),
-            reconnects=_count(item, "reconnects"),
+            reads_ok=_non_negative_int(item, "reads_ok"),
+            reads_failed=_non_negative_int(item, "reads_failed"),
+            reconnects=_non_negative_int(item, "reconnects"),
         )
 
 

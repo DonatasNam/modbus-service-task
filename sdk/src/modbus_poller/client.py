@@ -72,20 +72,11 @@ class Client:
         self._buffer = b""
 
     def _call(self, payload: Dict[str, str], parse: Callable[[Any], T]) -> T:
-        result = self._request(payload)
-        try:
-            return parse(result)
-        except ProtocolError:
-            self.close()
-            raise
-
-    def _request(self, payload: Dict[str, str]) -> Any:
         line = json.dumps(payload, separators=(",", ":")).encode("utf-8") + b"\n"
         try:
-            reply = self._exchange_once_more(line)
-            return self._result(reply)
-        except ProtocolError:
-            self.close()
+            return parse(self._result(self._exchange_once_more(line)))
+        except (ServiceUnavailable, ProtocolError):
+            self.close()  # a late or partial reply must never answer a later call
             raise
 
     def _exchange_once_more(self, line: bytes) -> bytes:
@@ -96,7 +87,6 @@ class Client:
         try:
             return self._exchange(line)
         except _ConnectionLost as err:
-            self.close()
             raise ServiceUnavailable(f"connection to {self._socket_path} lost: {err}") from err
 
     def _exchange(self, line: bytes) -> bytes:
@@ -107,10 +97,8 @@ class Client:
         except (BrokenPipeError, ConnectionResetError):
             pass  # the service closed this connection; a reply it queued first (busy) is still read below
         except socket.timeout as err:
-            self.close()
             raise ServiceUnavailable(f"request to {self._socket_path} timed out after {self._timeout} s") from err
         except OSError as err:
-            self.close()
             raise ServiceUnavailable(f"request to {self._socket_path} failed: {err}") from err
         return self._read_line(sock, deadline)
 
@@ -132,18 +120,15 @@ class Client:
         while b"\n" not in self._buffer:
             remaining = deadline - time.perf_counter()
             if remaining <= 0.0:
-                self.close()
                 raise ServiceUnavailable(f"no reply from {self._socket_path} within {self._timeout} s")
             sock.settimeout(remaining)
             try:
                 chunk = sock.recv(RECV_BYTES)
             except socket.timeout as err:
-                self.close()
                 raise ServiceUnavailable(f"no reply from {self._socket_path} within {self._timeout} s") from err
             except (ConnectionResetError, BrokenPipeError) as err:
                 raise _ConnectionLost(str(err)) from err
             except OSError as err:
-                self.close()
                 raise ServiceUnavailable(f"reading from {self._socket_path} failed: {err}") from err
             if not chunk:
                 raise _ConnectionLost("the service closed the connection")
@@ -161,27 +146,28 @@ class Client:
             reply = as_mapping(json.loads(line.decode("utf-8")), "reply")
         except (UnicodeDecodeError, ValueError) as err:
             raise ProtocolError(f"reply is not JSON: {err}") from err
-        is_ok = reply.get("ok")
-        if is_ok is True and "result" in reply:
+        ok_field = reply.get("ok")
+        if ok_field is True and "result" in reply:
             return reply["result"]
-        if is_ok is not False:
+        if ok_field is not False:
             raise ProtocolError("reply has no ok/result envelope")
         error = as_mapping(reply.get("error"), "error")
         code = error.get("code")
         message = error.get("message")
         if not isinstance(code, str) or not isinstance(message, str):
             raise ProtocolError("error reply without code and message")
-        raise self._request_error(code, message)
+        raise _request_error(code, message)
 
-    def _request_error(self, code: str, message: str) -> PollerError:
-        if code == "busy":
-            self.close()
-            return ServiceBusy(message)
-        if code == "unknown_device":
-            return UnknownDevice(message)
-        if code == "unknown_point":
-            return UnknownPoint(message)
-        return RequestError(code, message)
+
+def _request_error(code: str, message: str) -> PollerError:
+    """The SDK exception for a service error code; busy is a ServiceUnavailable, so the caller drops the connection."""
+    if code == "busy":
+        return ServiceBusy(message)
+    if code == "unknown_device":
+        return UnknownDevice(message)
+    if code == "unknown_point":
+        return UnknownPoint(message)
+    return RequestError(code, message)
 
 
 def _parse_devices(result: Any) -> List[Device]:

@@ -30,7 +30,6 @@ def render(client: Client) -> List[str]:
 
 
 def parse_args(argv: List[str]) -> argparse.Namespace:
-    """The command line."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--socket", default=None, help="service socket (default: $MODBUS_POLLER_SOCKET or /run/modbus-poller/poller.sock)")
     parser.add_argument("--interval", type=float, default=1.0, help="seconds between snapshots")

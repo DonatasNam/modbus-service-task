@@ -273,7 +273,6 @@ async def run(args: argparse.Namespace) -> None:
 
 
 def parse_args(argv: List[str]) -> argparse.Namespace:
-    """The command line."""
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--config", required=True, help="modbus-poller config file")
     parser.add_argument("--connection", type=int, default=0, help="index of the modbus_tcp entry to serve")
@@ -284,7 +283,6 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
 
 
 def main(argv: List[str]) -> int:
-    """Entry point."""
     asyncio.run(run(parse_args(argv)))
     return 0
 

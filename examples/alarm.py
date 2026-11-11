@@ -50,7 +50,6 @@ def is_outside(value: float, low: Optional[float], high: Optional[float]) -> boo
 
 
 def parse_args(argv: List[str]) -> argparse.Namespace:
-    """The command line."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--device", required=True, help="device id")
     parser.add_argument("--point", required=True, help="datapoint id")

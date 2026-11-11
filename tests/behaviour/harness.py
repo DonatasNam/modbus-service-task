@@ -166,7 +166,6 @@ class Service:
 
     @property
     def pid(self) -> int:
-        """The service's process id."""
         return self.process.pid
 
     def is_answering(self) -> bool:
