@@ -7,11 +7,8 @@
 
 #include "mbp.h"
 
-// The tag libmodbus 3.1.6's modbus.h typedefs as modbus_t: only mbp_link.c includes <modbus.h>.
-struct _modbus;
-
 typedef struct {
-    struct _modbus *ctx;
+    struct _modbus *ctx;                    // the tag libmodbus 3.1.6 typedefs as modbus_t; only mbp_link.c includes <modbus.h>
     bool isConnected;
 } MbpLink;
 
