@@ -6,6 +6,7 @@ add_library(mbp STATIC
     src/mbp_decode.c
     src/mbp_health.c
     src/mbp_link.c
+    src/mbp_poller.c
     src/mbp_sched.c
     src/mbp_store.c
 )

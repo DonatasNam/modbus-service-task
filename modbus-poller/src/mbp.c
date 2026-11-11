@@ -1,12 +1,22 @@
 #include <stddef.h>
+#include <stdint.h>
 
 #include "mbp.h"
+#include "mbp_config.h"
 #include "mbp_defs.h"
+#include "mbp_poller.h"
+#include "mbp_store.h"
 
 typedef struct {
     MbpStatus status;
     const char *text;
 } StatusText;
+
+static MbpStatus InitSteps(const char *configPath);
+static uint32_t CountPoints(void);
+
+// The main thread owns cfg: MbpCfg_Load writes it before any thread starts; every thread only reads it afterwards.
+static MbpCfg cfg;
 
 // wire protocol v1: these texts travel as error and last_error; clients store these; additive only
 static const StatusText statusTexts[] = {
@@ -56,6 +66,26 @@ static const StatusText statusTexts[] = {
     { .status = MbpStatusProtoOverflow, .text = "reply does not fit its buffer" },
 };
 
+static MbpStatus InitSteps(const char *configPath) {
+    MbpStatus ret = MbpCfg_Load(configPath, &cfg);
+    MBP_ASSERT(ret);
+
+    ret = MbpStore_Init(&cfg);
+    MBP_ASSERT(ret);
+
+    ret = MbpPoll_Start(&cfg);
+    MBP_ASSERT(ret);
+    return ret;
+}
+
+static uint32_t CountPoints(void) {
+    uint32_t count = 0u;
+    for (uint16_t i = 0u; i < cfg.stationCount; i++) {
+        count += cfg.stations[i].pointCount;
+    }
+    return count;
+}
+
 const char *Mbp_StatusStr(MbpStatus status) {
     for (size_t i = 0u; i < (sizeof(statusTexts) / sizeof(statusTexts[0])); i++) {
         if (statusTexts[i].status == status) {
@@ -65,13 +95,25 @@ const char *Mbp_StatusStr(MbpStatus status) {
     return "unknown status";
 }
 
+// Mbp_Deinit is the one cleanup path: the start functions never unwind themselves.
 MbpStatus Mbp_Init(const char *configPath, const char *socketPath) {
     if ((configPath == NULL) || (socketPath == NULL)) {
         return MbpStatusParam;
     }
-    return MbpStatusOk;
+    const MbpStatus ret = InitSteps(configPath);
+    if (ret != MbpStatusOk) {
+        MBP_LOG_ERR("start failed: %s", Mbp_StatusStr(ret));
+        (void) Mbp_Deinit();                // the init's own failure is what returns
+        return ret;
+    }
+    MBP_LOG_INFO("started: %u connections, %u stations, %u points, socket %s", (unsigned) cfg.connCount, (unsigned) cfg.stationCount, (unsigned) CountPoints(), socketPath);
+    return ret;
 }
 
 MbpStatus Mbp_Deinit(void) {
-    return MbpStatusOk;
+    MbpStatus firstRet = MbpStatusOk;
+    MBP_ASSERT_NON_FATAL(MbpPoll_Stop(), firstRet);
+    MBP_ASSERT_NON_FATAL(MbpStore_Deinit(), firstRet);
+    MBP_LOG_INFO("stopped: %s", Mbp_StatusStr(firstRet));
+    return firstRet;
 }
