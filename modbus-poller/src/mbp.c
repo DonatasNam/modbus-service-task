@@ -4,7 +4,9 @@
 #include "mbp.h"
 #include "mbp_config.h"
 #include "mbp_defs.h"
+#include "mbp_ipc.h"
 #include "mbp_poller.h"
+#include "mbp_proto.h"
 #include "mbp_store.h"
 
 typedef struct {
@@ -12,7 +14,7 @@ typedef struct {
     const char *text;
 } StatusText;
 
-static MbpStatus InitSteps(const char *configPath);
+static MbpStatus InitSteps(const char *configPath, const char *socketPath);
 static uint32_t CountPoints(void);
 
 // The main thread owns cfg: MbpCfg_Load writes it before any thread starts; every thread only reads it afterwards.
@@ -66,11 +68,17 @@ static const StatusText statusTexts[] = {
     { .status = MbpStatusProtoOverflow, .text = "reply does not fit its buffer" },
 };
 
-static MbpStatus InitSteps(const char *configPath) {
+static MbpStatus InitSteps(const char *configPath, const char *socketPath) {
     MbpStatus ret = MbpCfg_Load(configPath, &cfg);
     MBP_ASSERT(ret);
 
+    ret = MbpProto_Init();
+    MBP_ASSERT(ret);
+
     ret = MbpStore_Init(&cfg);
+    MBP_ASSERT(ret);
+
+    ret = MbpIpc_Start(&cfg, socketPath);
     MBP_ASSERT(ret);
 
     ret = MbpPoll_Start(&cfg);
@@ -100,7 +108,7 @@ MbpStatus Mbp_Init(const char *configPath, const char *socketPath) {
     if ((configPath == NULL) || (socketPath == NULL)) {
         return MbpStatusParam;
     }
-    const MbpStatus ret = InitSteps(configPath);
+    const MbpStatus ret = InitSteps(configPath, socketPath);
     if (ret != MbpStatusOk) {
         MBP_LOG_ERR("start failed: %s", Mbp_StatusStr(ret));
         (void) Mbp_Deinit();                // the init's own failure is what returns
@@ -113,7 +121,9 @@ MbpStatus Mbp_Init(const char *configPath, const char *socketPath) {
 MbpStatus Mbp_Deinit(void) {
     MbpStatus firstRet = MbpStatusOk;
     MBP_ASSERT_NON_FATAL(MbpPoll_Stop(), firstRet);
+    MBP_ASSERT_NON_FATAL(MbpIpc_Stop(), firstRet);
     MBP_ASSERT_NON_FATAL(MbpStore_Deinit(), firstRet);
+    MBP_ASSERT_NON_FATAL(MbpProto_Deinit(), firstRet);
     MBP_LOG_INFO("stopped: %s", Mbp_StatusStr(firstRet));
     return firstRet;
 }
