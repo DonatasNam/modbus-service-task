@@ -4,9 +4,6 @@
 #include "mbp_clock.h"
 #include "mbp_defs.h"
 
-#define MS_PER_SEC UINT64_C(1000)
-#define NS_PER_MS 1000000
-
 static MbpStatus ReadMs(clockid_t clock, uint64_t *nowMs);
 
 static MbpStatus ReadMs(clockid_t clock, uint64_t *nowMs) {
@@ -17,7 +14,7 @@ static MbpStatus ReadMs(clockid_t clock, uint64_t *nowMs) {
     if (clock_gettime(clock, &now) != 0) {
         return MbpStatusOs;
     }
-    *nowMs = ((uint64_t) now.tv_sec * MS_PER_SEC) + (uint64_t) (now.tv_nsec / NS_PER_MS);
+    *nowMs = ((uint64_t) now.tv_sec * MBP_MS_PER_SEC) + ((uint64_t) now.tv_nsec / MBP_NS_PER_MS);
     return MbpStatusOk;
 }
 

@@ -185,12 +185,12 @@ static MbpStatus AppendString(MbpProtoBuf *buf, const char *key, const char *tex
     MbpStatus ret = Append(buf, "%s\"", key);
     MBP_ASSERT_SILENT(ret);
     for (const char *next = text; *next != '\0'; next++) {
-        const bool isEscaped = (*next == '"') || (*next == '\\');
-        const size_t need = isEscaped ? 2u : 1u;
+        const bool needsEscape = (*next == '"') || (*next == '\\');
+        const size_t need = needsEscape ? MBP_PROTO_ESCAPE_GROWTH : 1u;
         if ((buf->len + need) >= buf->size) {
             return MbpStatusProtoOverflow;
         }
-        if (isEscaped) {
+        if (needsEscape) {
             buf->text[buf->len] = '\\';
             buf->len++;
         }

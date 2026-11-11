@@ -343,7 +343,7 @@ static MbpStatus GetString(Loader *loader, const cJSON *object, const char *key,
     size_t len = 0u;
     while ((len < (VALUE_EXCERPT_BYTES - 1u)) && (item->valuestring[len] != '\0')) {
         const unsigned char byte = (unsigned char) item->valuestring[len];
-        loader->value[len] = ((byte < 0x20u) || (byte >= 0x7Fu)) ? '?' : (char) byte;
+        loader->value[len] = ((byte < MBP_CFG_FIELD_FIRST_PRINTABLE) || (byte >= MBP_CFG_FIELD_DELETE)) ? '?' : (char) byte;
         len++;
     }
     loader->value[len] = '\0';

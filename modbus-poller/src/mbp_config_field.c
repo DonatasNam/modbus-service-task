@@ -14,8 +14,6 @@
 #define UTF8_MAX_CODE_POINT 0x10FFFFu
 #define UTF8_SURROGATE_FIRST 0xD800u
 #define UTF8_SURROGATE_LAST 0xDFFFu
-#define ASCII_FIRST_PRINTABLE 0x20u
-#define ASCII_DELETE 0x7Fu
 
 typedef struct {
     uint8_t leadMask;
@@ -36,7 +34,7 @@ static const Utf8Lead utf8Leads[] = {
 // The length of the valid, non-control UTF-8 sequence at bytes, or 0. A NUL inside a sequence fails its check.
 static size_t Utf8SequenceLen(const unsigned char *bytes) {
     if (bytes[0] < 0x80u) {
-        return ((bytes[0] < ASCII_FIRST_PRINTABLE) || (bytes[0] == ASCII_DELETE)) ? 0u : 1u;
+        return ((bytes[0] < MBP_CFG_FIELD_FIRST_PRINTABLE) || (bytes[0] == MBP_CFG_FIELD_DELETE)) ? 0u : 1u;
     }
     for (size_t i = 0u; i < (sizeof(utf8Leads) / sizeof(utf8Leads[0])); i++) {
         const Utf8Lead *lead = &utf8Leads[i];

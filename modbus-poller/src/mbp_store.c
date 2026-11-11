@@ -1,4 +1,3 @@
-#include <errno.h>
 #include <pthread.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -8,6 +7,7 @@
 #include "mbp_defs.h"
 #include "mbp_health.h"
 #include "mbp_store.h"
+#include "mbp_thread.h"
 
 // storeMutex guards every slot of store.stations. Each worker thread writes only its own station's slot; the IPC
 // thread copies slots out. Init and Deinit run on the main thread while no worker or IPC thread runs.
@@ -41,21 +41,11 @@ static MbpStatus CheckPoint(uint16_t stationIndex, uint16_t pointIndex) {
 }
 
 static MbpStatus Lock(void) {
-    const int lockRet = pthread_mutex_lock(&storeMutex);
-    if (lockRet != 0) {
-        errno = lockRet;
-        return MbpStatusOs;
-    }
-    return MbpStatusOk;
+    return MbpThread_ToStatus(pthread_mutex_lock(&storeMutex), MbpStatusOs);
 }
 
 static MbpStatus Unlock(void) {
-    const int unlockRet = pthread_mutex_unlock(&storeMutex);
-    if (unlockRet != 0) {
-        errno = unlockRet;
-        return MbpStatusOs;
-    }
-    return MbpStatusOk;
+    return MbpThread_ToStatus(pthread_mutex_unlock(&storeMutex), MbpStatusOs);
 }
 
 static void WriteValue(MbpStorePoint *point, double value, uint64_t tsMs) {

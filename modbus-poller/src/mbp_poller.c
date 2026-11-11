@@ -1,5 +1,4 @@
 #include <errno.h>
-#include <limits.h>
 #include <pthread.h>
 #include <stdbool.h>
 #include <stddef.h>
@@ -15,9 +14,7 @@
 #include "mbp_poller.h"
 #include "mbp_sched.h"
 #include "mbp_store.h"
-
-#define MS_PER_SEC UINT64_C(1000)
-#define NS_PER_MS UINT64_C(1000000)
+#include "mbp_thread.h"
 
 // One per enabled station. After MbpPoll_Start a worker belongs to its own thread; the main thread touches it again
 // only in MbpPoll_Stop, after the join.
@@ -42,13 +39,9 @@ typedef struct {
     Worker workers[MBP_MAX_STATIONS];
 } Poller;
 
-static MbpStatus OsStatus(int errorNumber);
-static MbpStatus CheckStackSize(void);
 static MbpStatus InitStopCond(void);
 static MbpStatus InitStopCondWith(pthread_condattr_t *attr);
 static MbpStatus StartWorker(const MbpCfg *cfg, uint16_t stationIndex);
-static MbpStatus CreateThread(Worker *worker);
-static MbpStatus CreateThreadWith(Worker *worker, pthread_attr_t *attr);
 static MbpStatus RequestStop(void);
 static MbpStatus WorkerLoop(Worker *worker);
 static MbpStatus WorkerStep(Worker *worker);
@@ -62,28 +55,15 @@ static MbpStatus MarkFailed(Worker *worker, MbpStatus cause);
 static MbpStatus CheckStop(void);
 static MbpStatus WaitUntil(uint64_t deadlineMs);
 static MbpStatus WaitLocked(uint64_t deadlineMs);
+static MbpStatus TimedWait(uint64_t deadlineMs);
 static void LogTransition(const Worker *worker, MbpHealthState before, MbpStatus cause);
 static void *WorkerMain(void *arg);
 
 static Poller poller = { .mutex = PTHREAD_MUTEX_INITIALIZER };
 
-// pthread functions return their error number instead of setting errno; errno carries it to MBP_ASSERT_ERRNO.
-static MbpStatus OsStatus(int errorNumber) {
-    if (errorNumber == 0) {
-        return MbpStatusOk;
-    }
-    errno = errorNumber;
-    return MbpStatusOs;
-}
-
-// PTHREAD_STACK_MIN is a sysconf() call in newer glibc, so the check runs at start.
-static MbpStatus CheckStackSize(void) {
-    return ((size_t) MBP_THREAD_STACK_BYTES >= (size_t) PTHREAD_STACK_MIN) ? MbpStatusOk : MbpStatusThread;
-}
-
 static MbpStatus InitStopCond(void) {
     pthread_condattr_t attr;
-    MbpStatus ret = OsStatus(pthread_condattr_init(&attr));
+    MbpStatus ret = MbpThread_ToStatus(pthread_condattr_init(&attr), MbpStatusOs);
     MBP_ASSERT_ERRNO(ret);
 
     ret = InitStopCondWith(&attr);
@@ -93,10 +73,10 @@ static MbpStatus InitStopCond(void) {
 
 // The deadlines are CLOCK_MONOTONIC milliseconds from MbpClock_MonoMs, so the condvar waits on that clock.
 static MbpStatus InitStopCondWith(pthread_condattr_t *attr) {
-    MbpStatus ret = OsStatus(pthread_condattr_setclock(attr, CLOCK_MONOTONIC));
+    MbpStatus ret = MbpThread_ToStatus(pthread_condattr_setclock(attr, CLOCK_MONOTONIC), MbpStatusOs);
     MBP_ASSERT_ERRNO(ret);
 
-    ret = OsStatus(pthread_cond_init(&poller.stopCond, attr));
+    ret = MbpThread_ToStatus(pthread_cond_init(&poller.stopCond, attr), MbpStatusOs);
     MBP_ASSERT_ERRNO(ret);
     poller.isStopCondInit = true;
     poller.isStopRequested = false;
@@ -129,42 +109,19 @@ static MbpStatus StartWorker(const MbpCfg *cfg, uint16_t stationIndex) {
         worker->dueMs[i] = nowMs;
     }
 
-    ret = CreateThread(worker);
+    ret = MbpThread_Start(&worker->thread, WorkerMain, worker);
     MBP_ASSERT(ret);
-    return ret;
-}
-
-static MbpStatus CreateThread(Worker *worker) {
-    pthread_attr_t attr;
-    MbpStatus ret = OsStatus(pthread_attr_init(&attr));
-    MBP_ASSERT_ERRNO(ret);
-
-    ret = CreateThreadWith(worker, &attr);
-    (void) pthread_attr_destroy(&attr);
-    return ret;
-}
-
-static MbpStatus CreateThreadWith(Worker *worker, pthread_attr_t *attr) {
-    int osRet = pthread_attr_setstacksize(attr, MBP_THREAD_STACK_BYTES);
-    errno = osRet;
-    MbpStatus ret = (osRet == 0) ? MbpStatusOk : MbpStatusThread;
-    MBP_ASSERT_ERRNO(ret);
-
-    osRet = pthread_create(&worker->thread, attr, WorkerMain, worker);
-    errno = osRet;
-    ret = (osRet == 0) ? MbpStatusOk : MbpStatusThread;
-    MBP_ASSERT_ERRNO(ret);
     worker->isStarted = true;
     return ret;
 }
 
 static MbpStatus RequestStop(void) {
-    MbpStatus ret = OsStatus(pthread_mutex_lock(&poller.mutex));
+    MbpStatus ret = MbpThread_ToStatus(pthread_mutex_lock(&poller.mutex), MbpStatusOs);
     MBP_ASSERT_ERRNO(ret);
 
     poller.isStopRequested = true;
-    const MbpStatus broadcastRet = OsStatus(pthread_cond_broadcast(&poller.stopCond));
-    ret = OsStatus(pthread_mutex_unlock(&poller.mutex));
+    const MbpStatus broadcastRet = MbpThread_ToStatus(pthread_cond_broadcast(&poller.stopCond), MbpStatusOs);
+    ret = MbpThread_ToStatus(pthread_mutex_unlock(&poller.mutex), MbpStatusOs);
     MBP_ASSERT_ERRNO(broadcastRet);
     MBP_ASSERT_ERRNO(ret);
     return ret;
@@ -338,37 +295,48 @@ static MbpStatus MarkFailed(Worker *worker, MbpStatus cause) {
 }
 
 static MbpStatus CheckStop(void) {
-    MbpStatus ret = OsStatus(pthread_mutex_lock(&poller.mutex));
+    MbpStatus ret = MbpThread_ToStatus(pthread_mutex_lock(&poller.mutex), MbpStatusOs);
     MBP_ASSERT_SILENT(ret);
     const bool isStopping = poller.isStopRequested;
-    ret = OsStatus(pthread_mutex_unlock(&poller.mutex));
+    ret = MbpThread_ToStatus(pthread_mutex_unlock(&poller.mutex), MbpStatusOs);
     MBP_ASSERT_SILENT(ret);
     return isStopping ? MbpStatusStopped : MbpStatusOk;
 }
 
+// The one unlock follows WaitLocked on every path, so WaitLocked may return through its macros.
 static MbpStatus WaitUntil(uint64_t deadlineMs) {
-    MbpStatus ret = OsStatus(pthread_mutex_lock(&poller.mutex));
+    MbpStatus ret = MbpThread_ToStatus(pthread_mutex_lock(&poller.mutex), MbpStatusOs);
     MBP_ASSERT_SILENT(ret);
     const MbpStatus waitRet = WaitLocked(deadlineMs);
-    ret = OsStatus(pthread_mutex_unlock(&poller.mutex));
+    ret = MbpThread_ToStatus(pthread_mutex_unlock(&poller.mutex), MbpStatusOs);
     MBP_ASSERT_SILENT(ret);
     return waitRet;
 }
 
 // Called with the mutex held. The stop flag is the predicate, read under the mutex, so a stop requested while the
-// worker was inside libmodbus is seen here. A wait error other than ETIMEDOUT is a failure, never a timeout.
+// worker was inside libmodbus is seen here.
 static MbpStatus WaitLocked(uint64_t deadlineMs) {
     uint64_t nowMs = 0u;
     MbpStatus ret = MbpClock_MonoMs(&nowMs);
-    while ((ret == MbpStatusOk) && !poller.isStopRequested && ((int64_t) (deadlineMs - nowMs) > 0)) {
-        const struct timespec deadline = { .tv_sec = (time_t) (deadlineMs / MS_PER_SEC), .tv_nsec = (long) ((deadlineMs % MS_PER_SEC) * NS_PER_MS) };
-        const int waitRet = pthread_cond_timedwait(&poller.stopCond, &poller.mutex, &deadline);
-        ret = ((waitRet == 0) || (waitRet == ETIMEDOUT)) ? MbpClock_MonoMs(&nowMs) : OsStatus(waitRet);
+    MBP_ASSERT_SILENT(ret);
+    while (!poller.isStopRequested && ((int64_t) (deadlineMs - nowMs) > 0)) {
+        ret = TimedWait(deadlineMs);
+        MBP_ASSERT_SILENT(ret);
+
+        ret = MbpClock_MonoMs(&nowMs);
+        MBP_ASSERT_SILENT(ret);
     }
-    if ((ret == MbpStatusOk) && poller.isStopRequested) {
-        ret = MbpStatusStopped;
+    return poller.isStopRequested ? MbpStatusStopped : MbpStatusOk;
+}
+
+// A wait error other than ETIMEDOUT is a failure, never a timeout.
+static MbpStatus TimedWait(uint64_t deadlineMs) {
+    const struct timespec deadline = { .tv_sec = (time_t) (deadlineMs / MBP_MS_PER_SEC), .tv_nsec = (long) ((deadlineMs % MBP_MS_PER_SEC) * MBP_NS_PER_MS) };
+    const int waitRet = pthread_cond_timedwait(&poller.stopCond, &poller.mutex, &deadline);
+    if (waitRet == ETIMEDOUT) {
+        return MbpStatusOk;
     }
-    return ret;
+    return MbpThread_ToStatus(waitRet, MbpStatusOs);
 }
 
 static void LogTransition(const Worker *worker, MbpHealthState before, MbpStatus cause) {
@@ -403,10 +371,7 @@ MbpStatus MbpPoll_Start(const MbpCfg *cfg) {
     if (cfg == NULL) {
         return MbpStatusParam;
     }
-    MbpStatus ret = CheckStackSize();
-    MBP_ASSERT(ret);
-
-    ret = InitStopCond();
+    MbpStatus ret = InitStopCond();
     MBP_ASSERT(ret);
 
     for (uint16_t i = 0u; i < cfg->stationCount; i++) {
@@ -427,14 +392,14 @@ MbpStatus MbpPoll_Stop(void) {
     for (uint16_t i = 0u; i < poller.workerCount; i++) {
         Worker *worker = &poller.workers[i];
         if (worker->isStarted) {
-            MBP_ASSERT_NON_FATAL(OsStatus(pthread_join(worker->thread, NULL)), firstRet);
+            MBP_ASSERT_NON_FATAL(MbpThread_ToStatus(pthread_join(worker->thread, NULL), MbpStatusOs), firstRet);
             worker->isStarted = false;
         }
         MBP_ASSERT_NON_FATAL(MbpLink_Close(&worker->link), firstRet);
     }
     poller.workerCount = 0u;
     if (poller.isStopCondInit) {
-        MBP_ASSERT_NON_FATAL(OsStatus(pthread_cond_destroy(&poller.stopCond)), firstRet);
+        MBP_ASSERT_NON_FATAL(MbpThread_ToStatus(pthread_cond_destroy(&poller.stopCond), MbpStatusOs), firstRet);
         poller.isStopCondInit = false;
     }
     return firstRet;

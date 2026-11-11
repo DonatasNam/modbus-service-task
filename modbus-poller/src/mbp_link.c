@@ -8,9 +8,6 @@
 #include "mbp_defs.h"
 #include "mbp_link.h"
 
-#define MS_PER_SEC 1000u
-#define US_PER_MS 1000u
-
 typedef struct {
     int errnoValue;
     MbpStatus status;
@@ -38,7 +35,7 @@ static const ErrnoStatus errnoStatuses[] = {
 
 // libmodbus keeps one response timeout per context, used by connect and by reads alike, so every call sets its own.
 static MbpStatus SetResponseTimeout(modbus_t *ctx, uint32_t timeoutMs) {
-    return (modbus_set_response_timeout(ctx, timeoutMs / MS_PER_SEC, (timeoutMs % MS_PER_SEC) * US_PER_MS) == 0) ? MbpStatusOk : MbpStatusParam;
+    return (modbus_set_response_timeout(ctx, timeoutMs / MBP_MS_PER_SEC, (timeoutMs % MBP_MS_PER_SEC) * MBP_US_PER_MS) == 0) ? MbpStatusOk : MbpStatusParam;
 }
 
 static MbpStatus MapErrno(int errnoValue) {

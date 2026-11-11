@@ -11,6 +11,7 @@
 
 #define MBP_PROTO_LINE_MAX 512u             // request bytes before the newline
 #define MBP_PROTO_MAX_DEPTH 4u
+#define MBP_PROTO_ESCAPE_GROWTH 2u          // only " and \ are escaped: config strings hold no control characters
 
 // wire protocol v1: the command names; clients send these; additive only
 typedef enum {

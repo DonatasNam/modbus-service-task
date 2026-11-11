@@ -8,6 +8,9 @@
 
 #include "mbp.h"
 
+#define MBP_CFG_FIELD_FIRST_PRINTABLE 0x20u
+#define MBP_CFG_FIELD_DELETE 0x7Fu
+
 MbpStatus MbpCfgField_ParseUint(const char *text, uint32_t min, uint32_t max, uint32_t *value);
 MbpStatus MbpCfgField_ParseScale(const char *text, double *value);
 MbpStatus MbpCfgField_ParseBool(const char *text, bool *value);

@@ -19,6 +19,7 @@
 #include "mbp_ipc.h"
 #include "mbp_proto.h"
 #include "mbp_serve.h"
+#include "mbp_thread.h"
 
 #define MAX_CLIENTS 32u
 #define IDLE_CLOSE_MS 60000u
@@ -26,19 +27,21 @@
 #define DRAIN_CHUNK_BYTES 4096u
 #define LISTEN_BACKLOG 16
 #define ACCEPT_BURST_MAX (MAX_CLIENTS + 16u)
-#define POLL_SLOTS (MAX_CLIENTS + 2u)
+#define STOP_SLOT 0u
+#define LISTEN_SLOT 1u
+#define FIRST_CLIENT_SLOT 2u
+#define POLL_SLOTS (MAX_CLIENTS + FIRST_CLIENT_SLOT)
 #define SOCKET_MODE 0660
 #define SOCKET_PATH_BYTES sizeof(((struct sockaddr_un *) NULL)->sun_path)
-#define JSON_ESCAPE_GROWTH 2u
 // A point with its strings empty: 11 + 8 + 11 + 11 + 10 bytes of keys and quotes up to the value, a %.10g number
 // within 24, 6 + 20 for the timestamp, 12 + 5 for the quality, 10 + 2 + 64 for the error text, 2 for "}" and ",".
 #define POINT_FRAME_BYTES 224u
 // {"ok":true,"result":{"id":"","points":[]}} and the newline: 43 bytes.
 #define REPLY_ENVELOPE_BYTES 64u
-#define REPLY_BYTES (REPLY_ENVELOPE_BYTES + (JSON_ESCAPE_GROWTH * MBP_CFG_ID_MAX) + (MBP_MAX_POINTS * (POINT_FRAME_BYTES + (JSON_ESCAPE_GROWTH * ((2u * MBP_CFG_ID_MAX) + MBP_CFG_DESCR_MAX + MBP_CFG_UNITS_MAX)))))
+#define REPLY_BYTES (REPLY_ENVELOPE_BYTES + (MBP_PROTO_ESCAPE_GROWTH * MBP_CFG_ID_MAX) + (MBP_MAX_POINTS * (POINT_FRAME_BYTES + (MBP_PROTO_ESCAPE_GROWTH * ((2u * MBP_CFG_ID_MAX) + MBP_CFG_DESCR_MAX + MBP_CFG_UNITS_MAX)))))
 // A list entry with its strings empty, the largest port, unit and point count: 98 bytes.
 #define LIST_ENTRY_FRAME_BYTES 128u
-#define LIST_BYTES (REPLY_ENVELOPE_BYTES + (MBP_MAX_STATIONS * (LIST_ENTRY_FRAME_BYTES + INET_ADDRSTRLEN + (JSON_ESCAPE_GROWTH * (MBP_CFG_ID_MAX + (2u * MBP_CFG_NAME_MAX))))))
+#define LIST_BYTES (REPLY_ENVELOPE_BYTES + (MBP_MAX_STATIONS * (LIST_ENTRY_FRAME_BYTES + INET_ADDRSTRLEN + (MBP_PROTO_ESCAPE_GROWTH * (MBP_CFG_ID_MAX + (2u * MBP_CFG_NAME_MAX))))))
 
 typedef struct {
     int fd;
@@ -68,12 +71,9 @@ typedef struct {
     char drain[DRAIN_CHUNK_BYTES];
 } Ipc;
 
-static MbpStatus OsStatus(int errorNumber);
 static MbpStatus ProbePath(void);
 static MbpStatus ProbeSocket(void);
 static MbpStatus Listen(void);
-static MbpStatus CreateThread(void);
-static MbpStatus CreateThreadWith(pthread_attr_t *attr);
 static MbpStatus WakeThread(void);
 static MbpStatus UnlinkIfBound(void);
 static MbpStatus CloseFd(int *fd);
@@ -96,14 +96,6 @@ static Ipc ipc = { .listenFd = -1, .stopFd = -1 };
 
 MBP_CT_ASSERT(LIST_BYTES <= REPLY_BYTES, list_reply_fits_reply_buffer);
 MBP_CT_ASSERT(POLL_SLOTS <= UINT16_MAX, poll_slot_fits_u16);
-
-static MbpStatus OsStatus(int errorNumber) {
-    if (errorNumber == 0) {
-        return MbpStatusOk;
-    }
-    errno = errorNumber;
-    return MbpStatusOs;
-}
 
 // One instance per path: only a refused probe means a stale file. An answer, or any other error (a stalled
 // instance's full backlog gives EAGAIN), leaves the path alone and fails the start.
@@ -177,30 +169,6 @@ static MbpStatus Listen(void) {
     return ret;
 }
 
-static MbpStatus CreateThread(void) {
-    pthread_attr_t attr;
-    MbpStatus ret = OsStatus(pthread_attr_init(&attr));
-    MBP_ASSERT_ERRNO(ret);
-
-    ret = CreateThreadWith(&attr);
-    (void) pthread_attr_destroy(&attr);
-    return ret;
-}
-
-static MbpStatus CreateThreadWith(pthread_attr_t *attr) {
-    int osRet = pthread_attr_setstacksize(attr, MBP_THREAD_STACK_BYTES);
-    errno = osRet;
-    MbpStatus ret = (osRet == 0) ? MbpStatusOk : MbpStatusThread;
-    MBP_ASSERT_ERRNO(ret);
-
-    osRet = pthread_create(&ipc.thread, attr, IpcMain, NULL);
-    errno = osRet;
-    ret = (osRet == 0) ? MbpStatusOk : MbpStatusThread;
-    MBP_ASSERT_ERRNO(ret);
-    ipc.isThreadStarted = true;
-    return ret;
-}
-
 static MbpStatus WakeThread(void) {
     const uint64_t one = 1u;
     return (write(ipc.stopFd, &one, sizeof(one)) == (ssize_t) sizeof(one)) ? MbpStatusOk : MbpStatusOs;
@@ -240,12 +208,12 @@ static MbpStatus ServeOnce(void) {
     struct pollfd fds[POLL_SLOTS];
     uint16_t slotClients[POLL_SLOTS];
     uint64_t nowMs = 0u;
-    nfds_t count = 2u;
+    nfds_t count = FIRST_CLIENT_SLOT;
     MbpStatus ret = MbpClock_MonoMs(&nowMs);
     MBP_ASSERT_SILENT(ret);
 
-    fds[0] = (struct pollfd) { .fd = ipc.stopFd, .events = POLLIN, .revents = 0 };
-    fds[1] = (struct pollfd) { .fd = ipc.listenFd, .events = POLLIN, .revents = 0 };
+    fds[STOP_SLOT] = (struct pollfd) { .fd = ipc.stopFd, .events = POLLIN, .revents = 0 };
+    fds[LISTEN_SLOT] = (struct pollfd) { .fd = ipc.listenFd, .events = POLLIN, .revents = 0 };
     for (uint16_t i = 0u; i < MAX_CLIENTS; i++) {
         if (ipc.clients[i].isOpen) {
             fds[count] = (struct pollfd) { .fd = ipc.clients[i].fd, .events = POLLIN, .revents = 0 };
@@ -256,18 +224,18 @@ static MbpStatus ServeOnce(void) {
     if (poll(fds, count, IdleTimeoutMs(nowMs)) < 0) {
         return (errno == EINTR) ? MbpStatusOk : MbpStatusOs;
     }
-    if (fds[0].revents != 0) {
+    if (fds[STOP_SLOT].revents != 0) {
         return MbpStatusStopped;
     }
 
     ret = MbpClock_MonoMs(&nowMs);
     MBP_ASSERT_SILENT(ret);
-    for (nfds_t slot = 2u; slot < count; slot++) {
+    for (nfds_t slot = FIRST_CLIENT_SLOT; slot < count; slot++) {
         if (fds[slot].revents != 0) {
             (void) ServeClient(&ipc.clients[slotClients[slot]], nowMs);         // a failure has closed that one client
         }
     }
-    if (fds[1].revents != 0) {
+    if (fds[LISTEN_SLOT].revents != 0) {
         (void) AcceptClients(nowMs);        // a failure belongs to one connection attempt; the next poll tries again
     }
     return ReapIdle(nowMs);
@@ -462,8 +430,9 @@ MbpStatus MbpIpc_Start(const MbpCfg *cfg, const char *socketPath) {
     ret = Listen();
     MBP_ASSERT(ret);
 
-    ret = CreateThread();
+    ret = MbpThread_Start(&ipc.thread, IpcMain, NULL);
     MBP_ASSERT(ret);
+    ipc.isThreadStarted = true;
     return ret;
 }
 
@@ -473,7 +442,7 @@ MbpStatus MbpIpc_Stop(void) {
     MbpStatus firstRet = MbpStatusOk;
     if (ipc.isThreadStarted) {
         MBP_ASSERT_NON_FATAL(WakeThread(), firstRet);
-        MBP_ASSERT_NON_FATAL(OsStatus(pthread_join(ipc.thread, NULL)), firstRet);
+        MBP_ASSERT_NON_FATAL(MbpThread_ToStatus(pthread_join(ipc.thread, NULL), MbpStatusOs), firstRet);
         ipc.isThreadStarted = false;
     }
     for (uint16_t i = 0u; i < MAX_CLIENTS; i++) {
