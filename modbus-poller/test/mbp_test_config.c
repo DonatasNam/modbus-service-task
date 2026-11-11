@@ -49,6 +49,7 @@ static const InvalidCase invalidCases[] = {
     { .file = "name_control_char.json", .expected = MbpStatusCfgValue },
     { .file = "scale_overflow.json", .expected = MbpStatusCfgRange },
     { .file = "truncated.json", .expected = MbpStatusCfgJson },
+    { .file = "trailing_text.json", .expected = MbpStatusCfgJson },
 };
 
 // Static, not on the stack: an MbpCfg is about 400 KB.

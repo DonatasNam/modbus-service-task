@@ -466,7 +466,7 @@ MbpStatus MbpCfg_Load(const char *path, MbpCfg *cfg) {
         MBP_LOG_ERR("config: %s: %s", path, Mbp_StatusStr(ret));
         return ret;
     }
-    cJSON *root = cJSON_ParseWithLengthOpts(text, textLen, &parseEnd, false);
+    cJSON *root = cJSON_ParseWithLengthOpts(text, textLen + 1u, &parseEnd, true);    // ReadStream's terminator ends the text: anything after the object fails
     const size_t errorOffset = (parseEnd != NULL) ? (size_t) (parseEnd - text) : 0u;
     free(text);
     if (root == NULL) {
