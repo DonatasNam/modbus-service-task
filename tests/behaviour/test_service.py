@@ -211,6 +211,21 @@ class PollingTest(ServiceTestCase):
             self.assertTrue(wait_until(lambda: client.status("2").online, 10.0))
             self.assertTrue(wait_until(lambda: client.value("2", "24").quality == "good", 3.0), "a 10 s point waited out its cycle after the link came back")
 
+    def test_points_that_keep_failing_starve_no_other_point(self) -> None:
+        service, simulators = self.start_all_types()
+        simulators[0].command("exception 2 11 8")
+        with service.client() as client:
+            time.sleep(1.0)
+            before = {point_id: client.value("2", point_id).timestamp for point_id in ("20", "39")}
+            time.sleep(4.0)
+            after = {point_id: client.value("2", point_id).timestamp for point_id in ("20", "39")}
+        simulators[0].command("exception 2 off")
+        for point_id in ("20", "39"):
+            self.assertIsNotNone(before[point_id])
+            self.assertIsNotNone(after[point_id])
+            assert before[point_id] is not None and after[point_id] is not None
+            self.assertGreater(after[point_id], before[point_id], f"point {point_id} was not read while points 5 and 25 kept failing")
+
     def test_dropped_link_reconnects(self) -> None:
         service, simulators = self.start_all_types()
         with service.client() as client:

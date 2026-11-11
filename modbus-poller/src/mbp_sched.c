@@ -36,3 +36,33 @@ MbpStatus MbpSched_Advance(uint64_t *dueMs, uint32_t cycleMs, uint64_t nowMs) {
     *dueMs = (DiffMs(nextMs, nowMs) > 0) ? nextMs : (nowMs + cycleMs);
     return MbpStatusOk;
 }
+
+MbpStatus MbpSched_MakeAllDue(uint64_t *dueMs, uint16_t count, uint64_t nowMs) {
+    if (dueMs == NULL) {
+        return MbpStatusParam;
+    }
+    for (uint16_t i = 0u; i < count; i++) {
+        dueMs[i] = nowMs;
+    }
+    return MbpStatusOk;
+}
+
+// A link loss leaves every point stale, so every point is due by now and is read right after the reconnect, whatever
+// its cycle. A point already overdue keeps its earlier due time, so it stays ahead of the points pulled in: with any
+// number of failing points, every overdue point is reached in turn and none starves. The point whose read failed keeps
+// its own next due time, at most retryMs away, so it comes after all the others and a long-cycle point is retried.
+MbpStatus MbpSched_RearmAfterLoss(uint64_t *dueMs, uint16_t count, uint16_t failedIndex, uint64_t retryMs, uint64_t nowMs) {
+    if ((dueMs == NULL) || (failedIndex >= count)) {
+        return MbpStatusParam;
+    }
+    for (uint16_t i = 0u; i < count; i++) {
+        if ((i != failedIndex) && (DiffMs(dueMs[i], nowMs) > 0)) {
+            dueMs[i] = nowMs;
+        }
+    }
+    const uint64_t latestRetryMs = nowMs + retryMs;
+    if (DiffMs(dueMs[failedIndex], latestRetryMs) > 0) {
+        dueMs[failedIndex] = latestRetryMs;
+    }
+    return MbpStatusOk;
+}
