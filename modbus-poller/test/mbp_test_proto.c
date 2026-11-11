@@ -148,7 +148,9 @@ static void TestWriters(void) {
     MBP_CHECK_STATUS(MbpProto_WriteStatus(&cfg.stations[0], &copy, &buf), MbpStatusOk);
     CheckReply(&buf, "{\"ok\":true,\"result\":{\"id\":\"7\",\"state\":\"online\",\"since\":1700000000001,\"last_ok\":1700000000002,\"last_error\":\"modbus response timeout\",\"reads_ok\":5,\"reads_failed\":2,\"reconnects\":1}}\n");
     MBP_CHECK_STATUS(MbpProto_WriteValues(&cfg.stations[0], &copy, &buf), MbpStatusOk);
-    CheckReply(&buf, "{\"ok\":true,\"result\":{\"id\":\"7\",\"points\":[{\"device\":\"7\",\"id\":\"1\",\"descr\":\"Volts\",\"units\":\"V\",\"value\":230.5,\"ts\":1700000000000,\"quality\":\"good\",\"error\":null},{\"device\":\"7\",\"id\":\"2\",\"descr\":\"a\\\"b\\\\c\",\"units\":\"\",\"value\":null,\"ts\":null,\"quality\":\"stale\",\"error\":\"modbus exception 02 illegal data address\"}]}}\n");
+    CheckReply(&buf, "{\"ok\":true,\"result\":{\"id\":\"7\",\"points\":["
+                     "{\"device\":\"7\",\"id\":\"1\",\"descr\":\"Volts\",\"units\":\"V\",\"value\":230.5,\"ts\":1700000000000,\"quality\":\"good\",\"error\":null},"
+                     "{\"device\":\"7\",\"id\":\"2\",\"descr\":\"a\\\"b\\\\c\",\"units\":\"\",\"value\":null,\"ts\":null,\"quality\":\"stale\",\"error\":\"modbus exception 02 illegal data address\"}]}}\n");
     MBP_CHECK_STATUS(MbpProto_WriteValue(&cfg.stations[0], &copy, 0u, &buf), MbpStatusOk);
     CheckReply(&buf, "{\"ok\":true,\"result\":{\"device\":\"7\",\"id\":\"1\",\"descr\":\"Volts\",\"units\":\"V\",\"value\":230.5,\"ts\":1700000000000,\"quality\":\"good\",\"error\":null}}\n");
     MBP_CHECK_STATUS(MbpProto_WriteValue(&cfg.stations[0], &copy, 2u, &buf), MbpStatusParam);
