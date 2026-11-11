@@ -6,6 +6,7 @@ add_library(mbp STATIC
     src/mbp_decode.c
     src/mbp_health.c
     src/mbp_sched.c
+    src/mbp_store.c
 )
 target_include_directories(mbp PUBLIC include PRIVATE src)
 target_compile_definitions(mbp PRIVATE MBP_VERBOSE_ERRORS=$<BOOL:${MBP_VERBOSE_ERRORS}>)
