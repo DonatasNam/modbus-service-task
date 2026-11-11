@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "modbus-poller-sdk"
+version = "0.1.0"
+description = "Client library for the modbus-pollerd service: list devices, read their status and latest values"
+readme = { text = "Client library for the modbus-pollerd service. See the repository README.", content-type = "text/plain" }
+requires-python = ">=3.8"
+license = { text = "MIT" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
