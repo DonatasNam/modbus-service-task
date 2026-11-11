@@ -9,7 +9,7 @@ typedef enum {
     MbpStatusOk = 0,
     MbpStatusParam = -1,
     MbpStatusOs = -2,                       // a system call failed; its log line carries errno
-    MbpStatusThread = -3,
+    MbpStatusThread = -3,                   // a thread did not start, or MBP_THREAD_STACK_BYTES is below PTHREAD_STACK_MIN
     MbpStatusStopped = -4,                  // a stop was requested; ends a worker, never sent to clients
     MbpStatusCfgOpen = -10,
     MbpStatusCfgRead = -11,
@@ -23,8 +23,8 @@ typedef enum {
     MbpStatusCfgLimit = -19,                // an array with no entries or more than its MBP_MAX_* limit
     MbpStatusCfgTooLong = -20,
     MbpStatusDecNotFinite = -30,            // a NaN or infinite float32, or a raw x scale that overflows
-    MbpStatusDecType = -31,
-    MbpStatusLinkOpen = -40,
+    MbpStatusDecType = -31,                 // data type, byte order or register count outside the decode tables
+    MbpStatusLinkOpen = -40,                // modbus_new_tcp, modbus_set_slave or the recovery mode refused
     MbpStatusLinkConnect = -41,
     MbpStatusLinkTimeout = -42,
     MbpStatusLinkIo = -43,
@@ -37,19 +37,19 @@ typedef enum {
     MbpStatusLinkExcGatewayPath = -50,      // Modbus exception 0A
     MbpStatusLinkExcGatewayTarget = -51,    // Modbus exception 0B
     MbpStatusLinkExcOther = -52,            // any other exception code
-    MbpStatusIpcSocket = -60,
-    MbpStatusIpcBind = -61,
-    MbpStatusIpcInUse = -62,                // another instance answers on the socket path
+    MbpStatusIpcSocket = -60,               // the path is too long, not a socket, or cannot be checked or removed; socket() or listen() failed
+    MbpStatusIpcBind = -61,                 // bind, the stat of the bound inode, or chmod failed
+    MbpStatusIpcInUse = -62,                // the path answers, or its probe failed other than refused; left in place
     MbpStatusIpcBusy = -63,
     MbpStatusIpcTooLong = -64,
     MbpStatusProtoJson = -70,
     MbpStatusProtoField = -71,
     MbpStatusProtoDepth = -72,
-    MbpStatusProtoArena = -73,
+    MbpStatusProtoArena = -73,              // the line is over MBP_PROTO_LINE_MAX or exhausts the parse arena
     MbpStatusProtoUnknownCmd = -74,
     MbpStatusProtoUnknownDevice = -75,
     MbpStatusProtoUnknownPoint = -76,
-    MbpStatusProtoOverflow = -77,
+    MbpStatusProtoOverflow = -77,           // a reply does not fit its MbpProtoBuf
 } MbpStatus;
 
 const char *Mbp_StatusStr(MbpStatus status);

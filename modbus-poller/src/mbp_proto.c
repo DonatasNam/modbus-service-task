@@ -30,7 +30,8 @@ typedef struct {
     const char *code;
 } WireCode;
 
-// The parse arena: only MbpProto_ParseRequest uses it, on the IPC thread; it is reset at every entry.
+// The parse arena: MbpProto_Init clears it before the IPC thread starts; afterwards only MbpProto_ParseRequest uses
+// it, on the IPC thread, and resets it at every entry.
 typedef struct {
     _Alignas(max_align_t) unsigned char bytes[ARENA_BYTES];
     size_t used;
@@ -47,6 +48,7 @@ static MbpStatus AppendTime(MbpProtoBuf *buf, const char *key, uint64_t timeMs);
 static MbpStatus AppendError(MbpProtoBuf *buf, const char *key, MbpStatus error);
 static MbpStatus AppendDevice(MbpProtoBuf *buf, const MbpCfg *cfg, uint16_t stationIndex);
 static MbpStatus AppendPoint(MbpProtoBuf *buf, const MbpCfgStation *station, const MbpStoreStation *copy, uint16_t pointIndex);
+static const char *WireCodeOf(MbpStatus status);
 static void *ArenaAlloc(size_t size);
 static void ArenaFree(void *block);
 
@@ -84,8 +86,8 @@ static Arena arena;
 // A line of MBP_PROTO_LINE_MAX bytes holds at most LINE_MAX / 2 + 1 items, each one aligned allocation, plus at
 // most LINE_MAX bytes of keys and strings, each with its terminator.
 MBP_CT_ASSERT(ARENA_BYTES >= ((((MBP_PROTO_LINE_MAX / 2u) + 1u) * (sizeof(cJSON) + ARENA_ALIGN)) + (2u * MBP_PROTO_LINE_MAX)), arena_holds_worst_request);
-// 4 levels x 1 KB = 4 KB, a quarter of the IPC thread's 64 KB stack at most; poll, the client table walk and the
-// reply writers use the rest.
+// 4 levels x 1 KB = 4 KB, inside the quarter of the IPC thread's 64 KB stack this assert reserves; poll, the client
+// table walk and the reply writers use the rest.
 MBP_CT_ASSERT((MBP_PROTO_MAX_DEPTH * CJSON_LEVEL_STACK_BYTES) <= (MBP_THREAD_STACK_BYTES / 4u), cjson_recursion_fits_ipc_stack);
 
 // The depth scan keeps cJSON's recursion bounded; a NUL byte or a \u0000 escape is refused, so an id is never cut short.
@@ -218,7 +220,7 @@ static MbpStatus AppendError(MbpProtoBuf *buf, const char *key, MbpStatus error)
 static MbpStatus AppendDevice(MbpProtoBuf *buf, const MbpCfg *cfg, uint16_t stationIndex) {
     const MbpCfgStation *station = &cfg->stations[stationIndex];
     const MbpCfgConn *conn = &cfg->conns[station->connIndex];
-    MbpStatus ret = AppendString(buf, (stationIndex == 0u) ? "{\"id\":" : ",{\"id\":", station->id);
+    MbpStatus ret = AppendString(buf, "{\"id\":", station->id);
     MBP_ASSERT_SILENT(ret);
     ret = AppendString(buf, ",\"name\":", station->name);
     MBP_ASSERT_SILENT(ret);
@@ -252,6 +254,15 @@ static MbpStatus AppendPoint(MbpProtoBuf *buf, const MbpCfgStation *station, con
     ret = AppendError(buf, ",\"error\":", point->error);
     MBP_ASSERT_SILENT(ret);
     return Append(buf, "}");
+}
+
+static const char *WireCodeOf(MbpStatus status) {
+    for (size_t i = 0u; i < (sizeof(wireCodes) / sizeof(wireCodes[0])); i++) {
+        if (wireCodes[i].status == status) {
+            return wireCodes[i].code;
+        }
+    }
+    return "internal";
 }
 
 // An exhausted arena makes cJSON fail the parse; the flag turns that into bad_request rather than internal.
@@ -310,6 +321,10 @@ MbpStatus MbpProto_WriteList(const MbpCfg *cfg, MbpProtoBuf *buf) {
     ret = Append(buf, "{\"ok\":true,\"result\":[");
     MBP_ASSERT_SILENT(ret);
     for (uint16_t i = 0u; i < cfg->stationCount; i++) {
+        if (i > 0u) {
+            ret = Append(buf, ",");
+            MBP_ASSERT_SILENT(ret);
+        }
         ret = AppendDevice(buf, cfg, i);
         MBP_ASSERT_SILENT(ret);
     }
@@ -368,16 +383,10 @@ MbpStatus MbpProto_WriteValue(const MbpCfgStation *station, const MbpStoreStatio
 }
 
 MbpStatus MbpProto_WriteError(MbpStatus status, MbpProtoBuf *buf) {
-    const char *code = "internal";
     MbpStatus ret = CheckBuf(buf);
     MBP_ASSERT_SILENT(ret);
-    for (size_t i = 0u; i < (sizeof(wireCodes) / sizeof(wireCodes[0])); i++) {
-        if (wireCodes[i].status == status) {
-            code = wireCodes[i].code;
-        }
-    }
     buf->len = 0u;
-    ret = Append(buf, "{\"ok\":false,\"error\":{\"code\":\"%s\"", code);
+    ret = Append(buf, "{\"ok\":false,\"error\":{\"code\":\"%s\"", WireCodeOf(status));
     MBP_ASSERT_SILENT(ret);
     ret = AppendString(buf, ",\"message\":", Mbp_StatusStr(status));
     MBP_ASSERT_SILENT(ret);

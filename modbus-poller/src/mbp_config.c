@@ -89,6 +89,9 @@ MBP_CT_ASSERT(MBP_MAX_STATIONS <= UINT16_MAX, station_count_fits_u16);
 MBP_CT_ASSERT(MBP_MAX_POINTS <= UINT16_MAX, point_count_fits_u16);
 MBP_CT_ASSERT(RETRIES_MAX <= UINT8_MAX, retries_fit_u8);
 MBP_CT_ASSERT(UNIT_ID_TCP <= UINT8_MAX, unit_id_fits_u8);
+MBP_CT_ASSERT(PORT_MAX <= UINT16_MAX, port_fits_u16);
+MBP_CT_ASSERT(FUNC_CODE_MAX <= UINT8_MAX, func_code_fits_u8);
+MBP_CT_ASSERT(ADDR_MAX <= UINT16_MAX, start_addr_fits_u16);
 
 static MbpStatus ReadFile(const char *path, char **text, size_t *textLen) {
     FILE *file = fopen(path, "rb");

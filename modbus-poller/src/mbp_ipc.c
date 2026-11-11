@@ -1,4 +1,5 @@
 #include <errno.h>
+#include <limits.h>
 #include <netinet/in.h>
 #include <poll.h>
 #include <pthread.h>
@@ -86,6 +87,8 @@ static Ipc ipc = { .listenFd = -1, .stopFd = -1 };
 
 MBP_CT_ASSERT(LIST_BYTES <= REPLY_BYTES, list_reply_fits_reply_buffer);
 MBP_CT_ASSERT(POLL_SLOTS <= UINT16_MAX, poll_slot_fits_u16);
+MBP_CT_ASSERT(REPLY_BYTES <= INT_MAX, reply_bytes_fit_sndbuf_int);
+MBP_CT_ASSERT(IDLE_CLOSE_MS <= INT_MAX, idle_timeout_fits_poll_int);
 
 static MbpStatus ResetState(const MbpCfg *cfg) {
     ipc.cfg = cfg;
