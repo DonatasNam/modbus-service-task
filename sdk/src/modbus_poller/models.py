@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Literal, Mapping, Optional, Tuple, cast, get_args
+from typing import Any, Literal, Mapping, Optional, Union
 
 from .errors import ProtocolError
 
+# The names wire protocol v1 knows today. v1 may add names, so a field also takes any other string unchanged:
+# an SDK already installed keeps working when the service learns a new state or quality.
 State = Literal["connecting", "online", "error", "offline", "disabled"]
 Quality = Literal["none", "good", "stale", "bad"]
-STATES: Tuple[str, ...] = get_args(State)
-QUALITIES: Tuple[str, ...] = get_args(Quality)
 MS_PER_SECOND = 1000.0
 
 
@@ -69,13 +69,6 @@ def _time(data: Mapping[str, Any], key: str) -> Optional[datetime]:
     return datetime.fromtimestamp(value / MS_PER_SECOND, tz=timezone.utc)
 
 
-def _choice(data: Mapping[str, Any], key: str, allowed: Tuple[str, ...]) -> str:
-    value = _text(data, key)
-    if value not in allowed:
-        raise ProtocolError(f"field {key!r} has unknown value {value!r}")
-    return value
-
-
 @dataclass(frozen=True)
 class Device:
     """One configured device (a Modbus station) as the service lists it."""
@@ -110,7 +103,7 @@ class DeviceStatus:
     """A device's communication status. since and last_ok are aware UTC datetimes; last_ok is None before a good read."""
 
     device_id: str
-    state: State
+    state: Union[State, str]
     since: Optional[datetime]
     last_ok: Optional[datetime]
     last_error: Optional[str]
@@ -129,7 +122,7 @@ class DeviceStatus:
         item = as_mapping(data, "status result")
         return cls(
             device_id=_text(item, "id"),
-            state=cast(State, _choice(item, "state", STATES)),
+            state=_text(item, "state"),
             since=_time(item, "since"),
             last_ok=_time(item, "last_ok"),
             last_error=_optional_text(item, "last_error"),
@@ -149,7 +142,7 @@ class PointValue:
     units: str
     value: Optional[float]
     timestamp: Optional[datetime]
-    quality: Quality
+    quality: Union[Quality, str]
     error: Optional[str]
 
     @classmethod
@@ -163,6 +156,6 @@ class PointValue:
             units=_text(item, "units"),
             value=_number(item, "value"),
             timestamp=_time(item, "ts"),
-            quality=cast(Quality, _choice(item, "quality", QUALITIES)),
+            quality=_text(item, "quality"),
             error=_optional_text(item, "error"),
         )
