@@ -76,17 +76,20 @@ class FakeService:
             threading.Thread(target=self._serve, args=(conn,), daemon=True).start()
 
     def _serve(self, conn: socket.socket) -> None:
-        with conn, conn.makefile("rwb") as stream:
-            for line in stream:
-                reply = self.handler(json.loads(line))
-                if reply is SILENT:
-                    continue
-                if reply is CLOSE:
-                    return
-                stream.write(reply.encode("utf-8") + b"\n")
-                stream.flush()
-                if self.close_after_reply:
-                    return
+        try:
+            with conn, conn.makefile("rwb") as stream:
+                for line in stream:
+                    reply = self.handler(json.loads(line))
+                    if reply is SILENT:
+                        continue
+                    if reply is CLOSE:
+                        return
+                    stream.write(reply.encode("utf-8") + b"\n")
+                    stream.flush()
+                    if self.close_after_reply:
+                        return
+        except (BrokenPipeError, ConnectionResetError):
+            pass  # the client closed first, which the interrupt and timeout tests do on purpose
 
     def close(self) -> None:
         self.listener.shutdown(socket.SHUT_RDWR)
@@ -217,6 +220,30 @@ class ClientTest(unittest.TestCase):
         with self.start(lambda request: "garbage") as client:
             with self.assertRaises(ProtocolError):
                 client.list_devices()
+
+    def test_interrupted_call_closes_the_connection(self) -> None:
+        with self.start() as client:
+            self.assertEqual(client.status("1").device_id, "1")
+            with mock.patch.object(Client, "_read_line", side_effect=KeyboardInterrupt), self.assertRaises(KeyboardInterrupt):
+                client.status("1")
+            self.assertEqual(client.status("1").device_id, "1")
+        assert self.service is not None
+        self.assertEqual(self.service.connections, 2)
+
+    def test_unknown_state_and_quality_names_pass_through(self) -> None:
+        def newer_service(request: Dict[str, Any]) -> Any:
+            if request.get("cmd") == "status":
+                return ok(dict(STATUS_1, state="degraded"))
+            if request.get("cmd") == "value":
+                return ok(dict(POINT_1, quality="estimated"))
+            return standard_reply(request)
+
+        with self.start(newer_service) as client:
+            status = client.status("1")
+            point = client.value("1", "1")
+        self.assertEqual(status.state, "degraded")
+        self.assertFalse(status.online)
+        self.assertEqual(point.quality, "estimated")
 
     def test_default_path_from_environment(self) -> None:
         with mock.patch.dict(os.environ, {"MODBUS_POLLER_SOCKET": "/tmp/elsewhere.sock"}):

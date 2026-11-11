@@ -32,8 +32,9 @@ def default_socket_path() -> str:
 class Client:
     """A connection to the service, opened on the first call. Not thread-safe: use one Client per thread.
 
-    A broken connection (EOF, reset, broken pipe) is reconnected once and the request resent. A timeout, a partial
-    reply or a ProtocolError closes the connection, so a late reply can never answer a later call.
+    A broken connection (EOF, reset, broken pipe) is reconnected once and the request resent. Any call that ends
+    without a whole reply (a timeout, a partial or bad reply, a KeyboardInterrupt) closes the connection, so a late
+    reply can never answer a later call.
     """
 
     def __init__(self, socket_path: Optional[str] = None, timeout: float = 2.0) -> None:
@@ -75,8 +76,10 @@ class Client:
         line = json.dumps(payload, separators=(",", ":")).encode("utf-8") + b"\n"
         try:
             return parse(self._result(self._exchange_once_more(line)))
-        except (ServiceUnavailable, ProtocolError):
-            self.close()  # a late or partial reply must never answer a later call
+        except RequestError:
+            raise  # a whole error reply was read: the connection is still in step
+        except BaseException:
+            self.close()  # a timeout, a bad or partial reply, or an interrupt: a late reply must never answer a later call
             raise
 
     def _exchange_once_more(self, line: bytes) -> bytes:
