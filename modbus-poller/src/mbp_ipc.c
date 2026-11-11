@@ -3,6 +3,7 @@
 #include <netinet/in.h>
 #include <poll.h>
 #include <pthread.h>
+#include <signal.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -55,6 +56,7 @@ typedef struct {
     int listenFd;
     int stopFd;
     bool isThreadStarted;
+    MbpStatus threadRet;                    // why the IPC thread ended early; read by MbpIpc_Stop after the join
     bool hasReportedLimit;
     bool hasReportedSendCap;
     pthread_t thread;
@@ -92,6 +94,7 @@ MBP_CT_ASSERT(IDLE_CLOSE_MS <= INT_MAX, idle_timeout_fits_poll_int);
 
 static MbpStatus ResetState(const MbpCfg *cfg) {
     ipc.cfg = cfg;
+    ipc.threadRet = MbpStatusOk;
     ipc.reply = (MbpProtoBuf) { .text = ipc.replyText, .size = sizeof(ipc.replyText), .len = 0u };
     for (uint16_t i = 0u; i < MAX_CLIENTS; i++) {
         ipc.clients[i] = (Client) { .fd = -1, .isOpen = false, .lastRequestMs = 0u, .inLen = 0u };
@@ -132,7 +135,7 @@ static MbpStatus PollOnce(void) {
 
     const nfds_t count = FillPollSet(fds, slotClients);
     if (poll(fds, count, IdleTimeoutMs(nowMs)) < 0) {
-        return (errno == EINTR) ? MbpStatusOk : MbpStatusOs;
+        return ((errno == EINTR) || (errno == EAGAIN) || (errno == ENOMEM)) ? MbpStatusOk : MbpStatusOs;      // transient: poll again
     }
     if (fds[STOP_SLOT].revents != 0) {
         return MbpStatusStopped;
@@ -315,11 +318,18 @@ static int IdleTimeoutMs(uint64_t nowMs) {
     return (int) earliestMs;
 }
 
+// A service without its socket server must not live on deaf: a failure that ends the server stops the whole
+// service through the daemon's SIGTERM path, and MbpIpc_Stop returns the cause, so the exit is non-zero and
+// systemd restarts it.
 static void *IpcMain(void *arg) {
     (void) arg;
     const MbpStatus ret = PollLoop();
     if (ret != MbpStatusOk) {
-        MBP_LOG_ERR("ipc: server stopped: %s", Mbp_StatusStr(ret));
+        ipc.threadRet = ret;
+        MBP_LOG_ERR("ipc: server stopped: %s; stopping the service", Mbp_StatusStr(ret));
+        if (kill(getpid(), SIGTERM) != 0) {
+            MBP_LOG_ERR("ipc: the service cannot stop itself: %s", strerror(errno));
+        }
     }
     return NULL;
 }
@@ -351,7 +361,9 @@ MbpStatus MbpIpc_Stop(void) {
     if (ipc.isThreadStarted) {
         MBP_ASSERT_NON_FATAL(WakeThread(), firstRet);
         MBP_ASSERT_NON_FATAL(MbpThread_ToStatus(pthread_join(ipc.thread, NULL), MbpStatusOs), firstRet);
+        MBP_ASSERT_NON_FATAL(ipc.threadRet, firstRet);
         ipc.isThreadStarted = false;
+        ipc.threadRet = MbpStatusOk;
     }
     for (uint16_t i = 0u; i < MAX_CLIENTS; i++) {
         if (ipc.clients[i].isOpen) {
