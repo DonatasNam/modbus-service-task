@@ -245,15 +245,10 @@ async def handle_control(simulator: Simulator, reader: asyncio.StreamReader, wri
         writer.close()
 
 
-async def run(args: argparse.Namespace) -> None:
-    """Loads the connection entry, serves Modbus TCP and the control socket until SIGTERM or SIGINT."""
-    config = json.loads(Path(args.config).read_text(encoding="utf-8"))
-    connection = config["modbus_tcp"][args.connection]
-    registers, units = build_registers(connection)
+async def run(args: argparse.Namespace, registers: RegisterMap, units: List[int]) -> None:
+    """Serves Modbus TCP and the control socket until SIGTERM or SIGINT; the exit cleanup runs after both servers closed."""
     simulator = Simulator(registers, units, args.serial_bus)
     control_path = Path(args.control)
-    if control_path.exists():
-        control_path.unlink()
     stop = asyncio.Event()
     loop = asyncio.get_running_loop()
     for stop_signal in (signal.SIGTERM, signal.SIGINT):
@@ -283,7 +278,13 @@ def parse_args(argv: List[str]) -> argparse.Namespace:
 
 
 def main(argv: List[str]) -> int:
-    asyncio.run(run(parse_args(argv)))
+    args = parse_args(argv)
+    config = json.loads(Path(args.config).read_text(encoding="utf-8"))
+    registers, units = build_registers(config["modbus_tcp"][args.connection])
+    control_path = Path(args.control)
+    if control_path.exists():
+        control_path.unlink()
+    asyncio.run(run(args, registers, units))
     return 0
 
 
