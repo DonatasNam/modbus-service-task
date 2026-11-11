@@ -8,15 +8,14 @@
 #include <string.h>
 #include <sys/eventfd.h>
 #include <sys/socket.h>
-#include <sys/stat.h>
 #include <sys/types.h>
-#include <sys/un.h>
 #include <unistd.h>
 
 #include "mbp_clock.h"
 #include "mbp_config.h"
 #include "mbp_defs.h"
 #include "mbp_ipc.h"
+#include "mbp_ipc_path.h"
 #include "mbp_proto.h"
 #include "mbp_serve.h"
 #include "mbp_thread.h"
@@ -25,14 +24,11 @@
 #define IDLE_CLOSE_MS 60000u
 #define DRAIN_MAX 65536u
 #define DRAIN_CHUNK_BYTES 4096u
-#define LISTEN_BACKLOG 16
 #define ACCEPT_BURST_MAX (MAX_CLIENTS + 16u)
 #define STOP_SLOT 0u
 #define LISTEN_SLOT 1u
 #define FIRST_CLIENT_SLOT 2u
 #define POLL_SLOTS (MAX_CLIENTS + FIRST_CLIENT_SLOT)
-#define SOCKET_MODE 0660
-#define SOCKET_PATH_BYTES sizeof(((struct sockaddr_un *) NULL)->sun_path)
 // A point with its strings empty: 11 + 8 + 11 + 11 + 10 bytes of keys and quotes up to the value, a %.10g number
 // within 24, 6 + 20 for the timestamp, 12 + 5 for the quality, 10 + 2 + 64 for the error text, 2 for "}" and ",".
 #define POINT_FRAME_BYTES 224u
@@ -57,39 +53,33 @@ typedef struct {
     const MbpCfg *cfg;
     int listenFd;
     int stopFd;
-    bool isBound;
-    dev_t boundDev;
-    ino_t boundIno;
     bool isThreadStarted;
     bool hasReportedLimit;
     bool hasReportedSendCap;
     pthread_t thread;
-    char socketPath[SOCKET_PATH_BYTES];
+    MbpIpcPath path;
     MbpProtoBuf reply;
     Client clients[MAX_CLIENTS];
     char replyText[REPLY_BYTES];
     char drain[DRAIN_CHUNK_BYTES];
 } Ipc;
 
-static MbpStatus ProbePath(void);
-static MbpStatus ProbeSocket(void);
-static MbpStatus Listen(void);
+static MbpStatus ResetState(const MbpCfg *cfg);
 static MbpStatus WakeThread(void);
-static MbpStatus UnlinkIfBound(void);
 static MbpStatus CloseFd(int *fd);
-static MbpStatus ServeLoop(void);
-static MbpStatus ServeOnce(void);
+static MbpStatus PollLoop(void);
+static MbpStatus PollOnce(void);
 static MbpStatus AcceptClients(uint64_t nowMs);
 static MbpStatus AddClient(int fd, uint64_t nowMs);
 static MbpStatus SetSendBuffer(int fd);
-static MbpStatus ServeClient(Client *client, uint64_t nowMs);
-static MbpStatus ServeLines(Client *client, uint64_t nowMs);
+static MbpStatus ReceiveRequests(Client *client, uint64_t nowMs);
+static MbpStatus ReplyToEachLine(Client *client, uint64_t nowMs);
 static MbpStatus ReplyTo(Client *client, size_t lineLen);
 static MbpStatus DropClient(Client *client, MbpStatus error);
 static MbpStatus CloseClient(int fd, MbpStatus error);
 static MbpStatus ReapIdle(uint64_t nowMs);
+static nfds_t FillPollSet(struct pollfd *fds, uint16_t *slotClients);
 static int IdleTimeoutMs(uint64_t nowMs);
-static void FillAddr(struct sockaddr_un *addr);
 static void *IpcMain(void *arg);
 
 static Ipc ipc = { .listenFd = -1, .stopFd = -1 };
@@ -97,92 +87,18 @@ static Ipc ipc = { .listenFd = -1, .stopFd = -1 };
 MBP_CT_ASSERT(LIST_BYTES <= REPLY_BYTES, list_reply_fits_reply_buffer);
 MBP_CT_ASSERT(POLL_SLOTS <= UINT16_MAX, poll_slot_fits_u16);
 
-// One instance per path: only a refused probe means a stale file. An answer, or any other error (a stalled
-// instance's full backlog gives EAGAIN), leaves the path alone and fails the start.
-static MbpStatus ProbePath(void) {
-    struct stat info;
-    if (lstat(ipc.socketPath, &info) != 0) {
-        const int statErrno = errno;
-        if (statErrno == ENOENT) {
-            return MbpStatusOk;
-        }
-        MBP_LOG_ERR("socket %s: %s", ipc.socketPath, strerror(statErrno));
-        return MbpStatusIpcSocket;
+static MbpStatus ResetState(const MbpCfg *cfg) {
+    ipc.cfg = cfg;
+    ipc.reply = (MbpProtoBuf) { .text = ipc.replyText, .size = sizeof(ipc.replyText), .len = 0u };
+    for (uint16_t i = 0u; i < MAX_CLIENTS; i++) {
+        ipc.clients[i] = (Client) { .fd = -1, .isOpen = false, .lastRequestMs = 0u, .inLen = 0u };
     }
-    if (!S_ISSOCK(info.st_mode)) {
-        MBP_LOG_ERR("socket %s: exists and is not a socket", ipc.socketPath);
-        return MbpStatusIpcSocket;
-    }
-    return ProbeSocket();
-}
-
-static MbpStatus ProbeSocket(void) {
-    struct sockaddr_un addr;
-    FillAddr(&addr);
-    const int probeFd = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
-    MbpStatus ret = (probeFd >= 0) ? MbpStatusOk : MbpStatusOs;
-    MBP_ASSERT_ERRNO(ret);
-
-    const int connectRet = connect(probeFd, (const struct sockaddr *) &addr, sizeof(addr));
-    const int connectErrno = errno;
-    int closeFd = probeFd;
-    ret = CloseFd(&closeFd);
-    MBP_ASSERT_ERRNO(ret);
-    if (connectRet == 0) {
-        MBP_LOG_ERR("socket %s: %s", ipc.socketPath, Mbp_StatusStr(MbpStatusIpcInUse));
-        return MbpStatusIpcInUse;
-    }
-    if (connectErrno != ECONNREFUSED) {
-        MBP_LOG_ERR("socket %s: probe failed, left in place: %s", ipc.socketPath, strerror(connectErrno));
-        return MbpStatusIpcInUse;
-    }
-    MBP_LOG_WARN("socket %s: stale, removed", ipc.socketPath);
-    ret = (unlink(ipc.socketPath) == 0) ? MbpStatusOk : MbpStatusIpcSocket;
-    MBP_ASSERT_ERRNO(ret);
-    return ret;
-}
-
-// The inode is recorded right after bind, so MbpIpc_Stop never unlinks a path another instance has taken over.
-// Nobody can connect before listen(), so the mode is set before anyone can use the socket.
-static MbpStatus Listen(void) {
-    struct sockaddr_un addr;
-    struct stat info;
-    FillAddr(&addr);
-    ipc.listenFd = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
-    MbpStatus ret = (ipc.listenFd >= 0) ? MbpStatusOk : MbpStatusIpcSocket;
-    MBP_ASSERT_ERRNO(ret);
-
-    ret = (bind(ipc.listenFd, (const struct sockaddr *) &addr, sizeof(addr)) == 0) ? MbpStatusOk : MbpStatusIpcBind;
-    MBP_ASSERT_ERRNO(ret);
-
-    ret = (stat(ipc.socketPath, &info) == 0) ? MbpStatusOk : MbpStatusIpcBind;
-    MBP_ASSERT_ERRNO(ret);
-    ipc.boundDev = info.st_dev;
-    ipc.boundIno = info.st_ino;
-    ipc.isBound = true;
-
-    ret = (chmod(ipc.socketPath, SOCKET_MODE) == 0) ? MbpStatusOk : MbpStatusIpcBind;
-    MBP_ASSERT_ERRNO(ret);
-
-    ret = (listen(ipc.listenFd, LISTEN_BACKLOG) == 0) ? MbpStatusOk : MbpStatusIpcSocket;
-    MBP_ASSERT_ERRNO(ret);
-    return ret;
+    return MbpStatusOk;
 }
 
 static MbpStatus WakeThread(void) {
     const uint64_t one = 1u;
     return (write(ipc.stopFd, &one, sizeof(one)) == (ssize_t) sizeof(one)) ? MbpStatusOk : MbpStatusOs;
-}
-
-static MbpStatus UnlinkIfBound(void) {
-    struct stat info;
-    if (stat(ipc.socketPath, &info) != 0) {
-        return (errno == ENOENT) ? MbpStatusOk : MbpStatusOs;
-    }
-    if ((info.st_dev != ipc.boundDev) || (info.st_ino != ipc.boundIno)) {
-        return MbpStatusOk;
-    }
-    return (unlink(ipc.socketPath) == 0) ? MbpStatusOk : MbpStatusOs;
 }
 
 // Linux releases the descriptor even when close() reports an error, so the slot is marked closed either way.
@@ -196,31 +112,22 @@ static MbpStatus CloseFd(int *fd) {
 }
 
 // Ends with Ok on a stop, with the failure that ended the server otherwise.
-static MbpStatus ServeLoop(void) {
+static MbpStatus PollLoop(void) {
     MbpStatus ret = MbpStatusOk;
     while (ret == MbpStatusOk) {
-        ret = ServeOnce();
+        ret = PollOnce();
     }
     return (ret == MbpStatusStopped) ? MbpStatusOk : ret;
 }
 
-static MbpStatus ServeOnce(void) {
+static MbpStatus PollOnce(void) {
     struct pollfd fds[POLL_SLOTS];
     uint16_t slotClients[POLL_SLOTS];
     uint64_t nowMs = 0u;
-    nfds_t count = FIRST_CLIENT_SLOT;
     MbpStatus ret = MbpClock_MonoMs(&nowMs);
     MBP_ASSERT_SILENT(ret);
 
-    fds[STOP_SLOT] = (struct pollfd) { .fd = ipc.stopFd, .events = POLLIN, .revents = 0 };
-    fds[LISTEN_SLOT] = (struct pollfd) { .fd = ipc.listenFd, .events = POLLIN, .revents = 0 };
-    for (uint16_t i = 0u; i < MAX_CLIENTS; i++) {
-        if (ipc.clients[i].isOpen) {
-            fds[count] = (struct pollfd) { .fd = ipc.clients[i].fd, .events = POLLIN, .revents = 0 };
-            slotClients[count] = i;
-            count++;
-        }
-    }
+    const nfds_t count = FillPollSet(fds, slotClients);
     if (poll(fds, count, IdleTimeoutMs(nowMs)) < 0) {
         return (errno == EINTR) ? MbpStatusOk : MbpStatusOs;
     }
@@ -232,7 +139,7 @@ static MbpStatus ServeOnce(void) {
     MBP_ASSERT_SILENT(ret);
     for (nfds_t slot = FIRST_CLIENT_SLOT; slot < count; slot++) {
         if (fds[slot].revents != 0) {
-            (void) ServeClient(&ipc.clients[slotClients[slot]], nowMs);         // a failure has closed that one client
+            (void) ReceiveRequests(&ipc.clients[slotClients[slot]], nowMs);         // a failure has closed that one client
         }
     }
     if (fds[LISTEN_SLOT].revents != 0) {
@@ -299,7 +206,7 @@ static MbpStatus SetSendBuffer(int fd) {
 }
 
 // One recv per wake-up, so a client that floods requests cannot hold the thread from the others.
-static MbpStatus ServeClient(Client *client, uint64_t nowMs) {
+static MbpStatus ReceiveRequests(Client *client, uint64_t nowMs) {
     const ssize_t got = recv(client->fd, &client->in[client->inLen], sizeof(client->in) - client->inLen, 0);
     if (got == 0) {
         return DropClient(client, MbpStatusOk);
@@ -308,11 +215,11 @@ static MbpStatus ServeClient(Client *client, uint64_t nowMs) {
         return ((errno == EAGAIN) || (errno == EWOULDBLOCK) || (errno == EINTR)) ? MbpStatusOk : DropClient(client, MbpStatusOk);
     }
     client->inLen += (size_t) got;
-    return ServeLines(client, nowMs);
+    return ReplyToEachLine(client, nowMs);
 }
 
 // A full buffer without a newline is a line over MBP_PROTO_LINE_MAX.
-static MbpStatus ServeLines(Client *client, uint64_t nowMs) {
+static MbpStatus ReplyToEachLine(Client *client, uint64_t nowMs) {
     const char *newline = memchr(client->in, '\n', client->inLen);
     while (newline != NULL) {
         const size_t lineLen = (size_t) (newline - client->in);
@@ -377,6 +284,21 @@ static MbpStatus ReapIdle(uint64_t nowMs) {
     return MbpStatusOk;
 }
 
+// The stop eventfd, the listen socket, then every open client; slotClients maps a client slot to its client.
+static nfds_t FillPollSet(struct pollfd *fds, uint16_t *slotClients) {
+    nfds_t count = FIRST_CLIENT_SLOT;
+    fds[STOP_SLOT] = (struct pollfd) { .fd = ipc.stopFd, .events = POLLIN, .revents = 0 };
+    fds[LISTEN_SLOT] = (struct pollfd) { .fd = ipc.listenFd, .events = POLLIN, .revents = 0 };
+    for (uint16_t i = 0u; i < MAX_CLIENTS; i++) {
+        if (ipc.clients[i].isOpen) {
+            fds[count] = (struct pollfd) { .fd = ipc.clients[i].fd, .events = POLLIN, .revents = 0 };
+            slotClients[count] = i;
+            count++;
+        }
+    }
+    return count;
+}
+
 // The poll timeout is the earliest idle deadline, or none while no client is connected.
 static int IdleTimeoutMs(uint64_t nowMs) {
     int64_t earliestMs = -1;
@@ -390,15 +312,9 @@ static int IdleTimeoutMs(uint64_t nowMs) {
     return (int) earliestMs;
 }
 
-static void FillAddr(struct sockaddr_un *addr) {
-    (void) memset(addr, 0, sizeof(*addr));
-    addr->sun_family = AF_UNIX;
-    (void) memcpy(addr->sun_path, ipc.socketPath, sizeof(addr->sun_path));
-}
-
 static void *IpcMain(void *arg) {
     (void) arg;
-    const MbpStatus ret = ServeLoop();
+    const MbpStatus ret = PollLoop();
     if (ret != MbpStatusOk) {
         MBP_LOG_ERR("ipc: server stopped: %s", Mbp_StatusStr(ret));
     }
@@ -409,25 +325,14 @@ MbpStatus MbpIpc_Start(const MbpCfg *cfg, const char *socketPath) {
     if ((cfg == NULL) || (socketPath == NULL)) {
         return MbpStatusParam;
     }
-    const size_t pathLen = strlen(socketPath);
-    MbpStatus ret = ((pathLen > 0u) && (pathLen < sizeof(ipc.socketPath))) ? MbpStatusOk : MbpStatusIpcSocket;
+    MbpStatus ret = ResetState(cfg);
     MBP_ASSERT(ret);
-    (void) memset(ipc.socketPath, 0, sizeof(ipc.socketPath));
-    (void) memcpy(ipc.socketPath, socketPath, pathLen);
-    ipc.cfg = cfg;
-    ipc.reply = (MbpProtoBuf) { .text = ipc.replyText, .size = sizeof(ipc.replyText), .len = 0u };
-    for (uint16_t i = 0u; i < MAX_CLIENTS; i++) {
-        ipc.clients[i] = (Client) { .fd = -1, .isOpen = false, .lastRequestMs = 0u, .inLen = 0u };
-    }
 
     ipc.stopFd = eventfd(0u, EFD_CLOEXEC | EFD_NONBLOCK);
     ret = (ipc.stopFd >= 0) ? MbpStatusOk : MbpStatusOs;
     MBP_ASSERT_ERRNO(ret);
 
-    ret = ProbePath();
-    MBP_ASSERT(ret);
-
-    ret = Listen();
+    ret = MbpIpcPath_Listen(&ipc.path, socketPath, &ipc.listenFd);
     MBP_ASSERT(ret);
 
     ret = MbpThread_Start(&ipc.thread, IpcMain, NULL);
@@ -436,8 +341,8 @@ MbpStatus MbpIpc_Start(const MbpCfg *cfg, const char *socketPath) {
     return ret;
 }
 
-// Safe when never started, partly started or already stopped: closes only open descriptors and unlinks the path
-// only while it is still the inode this instance bound.
+// Safe when never started, partly started or already stopped: closes only open descriptors, and the path goes only
+// while it is still the inode this instance bound.
 MbpStatus MbpIpc_Stop(void) {
     MbpStatus firstRet = MbpStatusOk;
     if (ipc.isThreadStarted) {
@@ -452,10 +357,7 @@ MbpStatus MbpIpc_Stop(void) {
         }
     }
     MBP_ASSERT_NON_FATAL(CloseFd(&ipc.listenFd), firstRet);
-    if (ipc.isBound) {
-        ipc.isBound = false;
-        MBP_ASSERT_NON_FATAL(UnlinkIfBound(), firstRet);
-    }
+    MBP_ASSERT_NON_FATAL(MbpIpcPath_Unlink(&ipc.path), firstRet);
     MBP_ASSERT_NON_FATAL(CloseFd(&ipc.stopFd), firstRet);
     return firstRet;
 }
