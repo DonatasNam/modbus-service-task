@@ -50,7 +50,7 @@ static MbpStatus ReadPoint(Worker *worker, uint16_t pointIndex);
 static MbpStatus ReadAttempts(Worker *worker, uint16_t pointIndex, uint16_t *regs);
 static MbpStatus Reconnect(Worker *worker);
 static MbpStatus FinishRead(Worker *worker, uint16_t pointIndex, MbpStatus result);
-static MbpStatus DropLink(Worker *worker);
+static MbpStatus DropLink(Worker *worker, uint64_t nowMs);
 static MbpStatus MarkFailed(Worker *worker, MbpStatus cause);
 static MbpStatus CheckStop(void);
 static MbpStatus WaitUntil(uint64_t deadlineMs);
@@ -272,26 +272,34 @@ static MbpStatus FinishRead(Worker *worker, uint16_t pointIndex, MbpStatus resul
         return MbpStore_PutHealth(worker->stationIndex, &worker->health);
     }
 
-    ret = DropLink(worker);
+    ret = DropLink(worker, nowMs);
     MBP_ASSERT_SILENT(ret);
     return WaitUntil(nowMs + worker->health.waitMs);
 }
 
-static MbpStatus DropLink(Worker *worker) {
+// A link loss marks every point stale, so every point is due again: each is read once right after the reconnect,
+// whatever its acq_cycle, instead of staying stale until its next cycle.
+static MbpStatus DropLink(Worker *worker, uint64_t nowMs) {
     MbpStatus ret = MbpLink_Disconnect(&worker->link);
     MBP_ASSERT_SILENT(ret);
+    for (uint16_t i = 0u; i < worker->station->pointCount; i++) {
+        worker->dueMs[i] = nowMs;
+    }
     return MbpStore_PutLinkLoss(worker->stationIndex, &worker->health);
 }
 
 static MbpStatus MarkFailed(Worker *worker, MbpStatus cause) {
     uint64_t wallMs = 0u;
+    uint64_t nowMs = 0u;
     MbpStatus ret = MbpClock_WallMs(&wallMs);
     MBP_ASSERT_SILENT(ret);
     const MbpHealthState before = worker->health.state;
     ret = MbpHealth_OnRead(&worker->health, cause, wallMs);
     MBP_ASSERT_SILENT(ret);
     LogTransition(worker, before, cause);
-    return DropLink(worker);
+    ret = MbpClock_MonoMs(&nowMs);
+    MBP_ASSERT_SILENT(ret);
+    return DropLink(worker, nowMs);
 }
 
 static MbpStatus CheckStop(void) {

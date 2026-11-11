@@ -205,8 +205,10 @@ class PollingTest(ServiceTestCase):
         with service.client() as client:
             self.assertTrue(wait_until(lambda: client.status("2").state == "error", 3.0))
             self.assertIn("gateway target", client.status("2").last_error or "")
+            self.assertEqual(client.value("2", "24").quality, "stale")
             simulators[0].command("exception 2 off")
             self.assertTrue(wait_until(lambda: client.status("2").online, 10.0))
+            self.assertTrue(wait_until(lambda: client.value("2", "24").quality == "good", 3.0), "a 10 s point waited out its cycle after the link came back")
 
     def test_dropped_link_reconnects(self) -> None:
         service, simulators = self.start_all_types()
