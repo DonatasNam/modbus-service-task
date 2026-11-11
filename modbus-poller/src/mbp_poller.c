@@ -219,6 +219,8 @@ static MbpStatus ReadAttempts(Worker *worker, uint16_t pointIndex, uint16_t *reg
         if (step == MbpHealthStepReconnect) {
             ret = Reconnect(worker);
             MBP_ASSERT_SILENT(ret);
+            ret = CheckStop();
+            MBP_ASSERT_SILENT(ret);
         }
 
         result = MbpLink_ReadRegs(&worker->link, point->funcCode, point->startAddr, point->regCount, regs, conn->requestTimeoutMs);
