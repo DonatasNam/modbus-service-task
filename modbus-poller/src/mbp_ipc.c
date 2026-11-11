@@ -27,6 +27,8 @@
 #define DRAIN_MAX 65536u
 #define DRAIN_CHUNK_BYTES 4096u
 #define ACCEPT_BURST_MAX (MAX_CLIENTS + 16u)
+#define POLL_RETRY_WAIT_MS 100
+#define POLL_RETRY_MAX 50u                  // 5 s of a kernel short of memory, then the server fails and the service restarts
 #define STOP_SLOT 0u
 #define LISTEN_SLOT 1u
 #define FIRST_CLIENT_SLOT 2u
@@ -57,6 +59,7 @@ typedef struct {
     int stopFd;
     bool isThreadStarted;
     MbpStatus threadRet;                    // why the IPC thread ended early; read by MbpIpc_Stop after the join
+    uint32_t pollRetries;                   // poll() failures in a row that RetryPoll waited out
     bool hasReportedLimit;
     bool hasReportedSendCap;
     pthread_t thread;
@@ -72,6 +75,7 @@ static MbpStatus WakeThread(void);
 static MbpStatus CloseFd(int *fd);
 static MbpStatus PollLoop(void);
 static MbpStatus PollOnce(void);
+static MbpStatus RetryPoll(int pollErrno);
 static MbpStatus AcceptClients(uint64_t nowMs);
 static MbpStatus AddClient(int fd, uint64_t nowMs);
 static MbpStatus SetSendBuffer(int fd);
@@ -95,6 +99,7 @@ MBP_CT_ASSERT(IDLE_CLOSE_MS <= INT_MAX, idle_timeout_fits_poll_int);
 static MbpStatus ResetState(const MbpCfg *cfg) {
     ipc.cfg = cfg;
     ipc.threadRet = MbpStatusOk;
+    ipc.pollRetries = 0u;
     ipc.reply = (MbpProtoBuf) { .text = ipc.replyText, .size = sizeof(ipc.replyText), .len = 0u };
     for (uint16_t i = 0u; i < MAX_CLIENTS; i++) {
         ipc.clients[i] = (Client) { .fd = -1, .isOpen = false, .lastRequestMs = 0u, .inLen = 0u };
@@ -135,8 +140,9 @@ static MbpStatus PollOnce(void) {
 
     const nfds_t count = FillPollSet(fds, slotClients);
     if (poll(fds, count, IdleTimeoutMs(nowMs)) < 0) {
-        return ((errno == EINTR) || (errno == EAGAIN) || (errno == ENOMEM)) ? MbpStatusOk : MbpStatusOs;      // transient: poll again
+        return RetryPoll(errno);
     }
+    ipc.pollRetries = 0u;
     if (fds[STOP_SLOT].revents != 0) {
         return MbpStatusStopped;
     }
@@ -152,6 +158,25 @@ static MbpStatus PollOnce(void) {
         (void) AcceptClients(nowMs);        // a failure belongs to one connection attempt; the next poll tries again
     }
     return ReapIdle(nowMs);
+}
+
+// EINTR polls again at once. EAGAIN and ENOMEM (the kernel short of memory) wait POLL_RETRY_WAIT_MS on the stop
+// eventfd alone, so the thread neither spins nor misses a stop; past POLL_RETRY_MAX in a row, or on any other errno,
+// the server fails and IpcMain stops the service.
+static MbpStatus RetryPoll(int pollErrno) {
+    if (pollErrno == EINTR) {
+        return MbpStatusOk;
+    }
+    if (((pollErrno != EAGAIN) && (pollErrno != ENOMEM)) || (ipc.pollRetries >= POLL_RETRY_MAX)) {
+        errno = pollErrno;
+        return MbpStatusOs;
+    }
+    ipc.pollRetries++;
+    struct pollfd stop = { .fd = ipc.stopFd, .events = POLLIN, .revents = 0 };
+    if ((poll(&stop, 1u, POLL_RETRY_WAIT_MS) > 0) && (stop.revents != 0)) {
+        return MbpStatusStopped;
+    }
+    return MbpStatusOk;
 }
 
 static MbpStatus AcceptClients(uint64_t nowMs) {
@@ -318,9 +343,7 @@ static int IdleTimeoutMs(uint64_t nowMs) {
     return (int) earliestMs;
 }
 
-// A service without its socket server must not live on deaf: a failure that ends the server stops the whole
-// service through the daemon's SIGTERM path, and MbpIpc_Stop returns the cause, so the exit is non-zero and
-// systemd restarts it.
+// A service without its socket server must not live on deaf: the SIGTERM ends it through Mbp_Init's contract.
 static void *IpcMain(void *arg) {
     (void) arg;
     const MbpStatus ret = PollLoop();

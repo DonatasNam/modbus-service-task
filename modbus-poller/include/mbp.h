@@ -53,6 +53,8 @@ typedef enum {
 } MbpStatus;
 
 const char *Mbp_StatusStr(MbpStatus status);
+// The caller blocks SIGTERM in every thread before this call and runs Mbp_Deinit when it arrives: a socket server
+// failure raises SIGTERM to stop the service, and Mbp_Deinit then returns that failure.
 MbpStatus Mbp_Init(const char *configPath, const char *socketPath);
 MbpStatus Mbp_Deinit(void);
 
