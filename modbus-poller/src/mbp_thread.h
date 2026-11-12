@@ -1,4 +1,3 @@
-// Internal to modbus-poller. External users include mbp.h.
 #ifndef MBP_THREAD_H
 #define MBP_THREAD_H
 

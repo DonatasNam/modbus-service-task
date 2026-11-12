@@ -1,4 +1,3 @@
-// Internal to modbus-poller. External users include mbp.h.
 #ifndef MBP_CONFIG_FIELD_H
 #define MBP_CONFIG_FIELD_H
 

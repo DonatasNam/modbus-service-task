@@ -52,7 +52,6 @@ static void TestMakeAllDue(void) {
     MBP_CHECK_STATUS(MbpSched_MakeAllDue(NULL, 3u, 500u), MbpStatusParam);
 }
 
-// The failed point comes after every other point; an overdue point keeps its place ahead of the points pulled in.
 static void TestRearmAfterLoss(void) {
     uint64_t dueMs[4] = { 9000u, 1000u + 3600000u, 7000u, 400u };
     uint16_t index = 99u;
@@ -69,7 +68,6 @@ static void TestRearmAfterLoss(void) {
     MBP_CHECK_STATUS(MbpSched_RearmAfterLoss(dueMs, 4u, 4u, 30000u, 1000u), MbpStatusParam);
 }
 
-// Two points that keep failing: every other point is still read, in the order its due time sets.
 static void TestTwoFailingPointsStarveNothing(void) {
     uint64_t dueMs[6] = { 0u, 0u, 0u, 0u, 0u, 0u };
     uint32_t reads[6] = { 0u, 0u, 0u, 0u, 0u, 0u };

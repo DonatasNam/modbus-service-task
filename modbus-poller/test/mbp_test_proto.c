@@ -110,7 +110,6 @@ static void TestParseIds(void) {
     MBP_CHECK(request.device[0] == '\0');
 }
 
-// The worst shapes that fit one line: the arena must hold them, and a reset must make room for the next.
 static void TestParseLongLines(void) {
     static char line[LONG_LINE_BYTES];
     MbpProtoRequest request;

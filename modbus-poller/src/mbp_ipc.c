@@ -51,14 +51,12 @@ typedef struct {
     char in[MBP_PROTO_LINE_MAX + 1u];       // one request line and its newline
 } Client;
 
-// The IPC thread owns the clients, the buffers and the listen socket once it runs; the main thread sets them up
-// in MbpIpc_Start before the thread starts and tears them down in MbpIpc_Stop after the join.
 typedef struct {
     const MbpCfg *cfg;
     int listenFd;
     int stopFd;
     bool isThreadStarted;
-    MbpStatus threadRet;                    // why the IPC thread ended early; read by MbpIpc_Stop after the join
+    MbpStatus threadRet;
     uint32_t pollRetries;                   // poll() failures in a row that RetryPoll waited out
     bool hasReportedLimit;
     bool hasReportedSendCap;
@@ -112,7 +110,6 @@ static MbpStatus WakeThread(void) {
     return (write(ipc.stopFd, &one, sizeof(one)) == (ssize_t) sizeof(one)) ? MbpStatusOk : MbpStatusOs;
 }
 
-// Linux releases the descriptor even when close() reports an error, so the slot is marked closed either way.
 static MbpStatus CloseFd(int *fd) {
     if (*fd < 0) {
         return MbpStatusOk;
@@ -122,7 +119,6 @@ static MbpStatus CloseFd(int *fd) {
     return (closeRet == 0) ? MbpStatusOk : MbpStatusOs;
 }
 
-// Ends with Ok on a stop, with the failure that ended the server otherwise.
 static MbpStatus PollLoop(void) {
     MbpStatus ret = MbpStatusOk;
     while (ret == MbpStatusOk) {
@@ -151,17 +147,16 @@ static MbpStatus PollOnce(void) {
     MBP_ASSERT_SILENT(ret);
     for (nfds_t slot = FIRST_CLIENT_SLOT; slot < count; slot++) {
         if (fds[slot].revents != 0) {
-            (void) ReceiveRequests(&ipc.clients[slotClients[slot]], nowMs);         // a failure has closed that one client
+            (void) ReceiveRequests(&ipc.clients[slotClients[slot]], nowMs);
         }
     }
     if (fds[LISTEN_SLOT].revents != 0) {
-        (void) AcceptClients(nowMs);        // a failure belongs to one connection attempt; the next poll tries again
+        (void) AcceptClients(nowMs);
     }
     return ReapIdle(nowMs);
 }
 
-// Runs right after the failed poll(), while errno is still its own. The wait polls the stop eventfd alone, so a kernel
-// short of memory neither spins the thread nor delays a stop.
+// Runs right after the failed poll(), while errno is still its own.
 static MbpStatus RetryPoll(void) {
     const int pollErrno = errno;
     if (pollErrno == EINTR) {
@@ -171,7 +166,7 @@ static MbpStatus RetryPoll(void) {
     MBP_ASSERT_ERRNO(ret);
     ipc.pollRetries++;
     struct pollfd stop = { .fd = ipc.stopFd, .events = POLLIN, .revents = 0 };
-    if ((poll(&stop, 1u, POLL_RETRY_WAIT_MS) > 0) && (stop.revents != 0)) {      // a failed wait polls again at once; POLL_RETRY_MAX still bounds the loop
+    if ((poll(&stop, 1u, POLL_RETRY_WAIT_MS) > 0) && (stop.revents != 0)) {
         return MbpStatusStopped;
     }
     return MbpStatusOk;
@@ -211,8 +206,6 @@ static MbpStatus AddClient(int fd, uint64_t nowMs) {
     return MbpStatusOk;
 }
 
-// A request/response client always has room for one whole reply, so a send that does not fit means the client
-// stopped reading.
 static MbpStatus SetSendBuffer(int fd) {
     int size = 0;
     socklen_t sizeLen = sizeof(size);
@@ -234,7 +227,6 @@ static MbpStatus SetSendBuffer(int fd) {
     return ret;
 }
 
-// One recv per wake-up, so a client that floods requests cannot hold the thread from the others.
 static MbpStatus ReceiveRequests(Client *client, uint64_t nowMs) {
     const ssize_t got = recv(client->fd, &client->in[client->inLen], sizeof(client->in) - client->inLen, 0);
     if (got == 0) {
@@ -247,7 +239,6 @@ static MbpStatus ReceiveRequests(Client *client, uint64_t nowMs) {
     return ReplyToEachLine(client, nowMs);
 }
 
-// A full buffer without a newline is a line over MBP_PROTO_LINE_MAX.
 static MbpStatus ReplyToEachLine(Client *client, uint64_t nowMs) {
     const char *newline = memchr(client->in, '\n', client->inLen);
     while (newline != NULL) {
@@ -265,8 +256,6 @@ static MbpStatus ReplyToEachLine(Client *client, uint64_t nowMs) {
     return (client->inLen == sizeof(client->in)) ? DropClient(client, MbpStatusIpcTooLong) : MbpStatusOk;
 }
 
-// MbpServe_Line's one caller: a failed request always gets its error reply. A reply that cannot go out whole drops
-// the client.
 static MbpStatus ReplyTo(Client *client, size_t lineLen) {
     MbpStatus ret = MbpServe_Line(ipc.cfg, client->in, lineLen, &ipc.reply);
     if (ret != MbpStatusOk) {
@@ -285,15 +274,12 @@ static MbpStatus DropClient(Client *client, MbpStatus error) {
     return CloseClient(fd, error);
 }
 
-// The one path for every close the service starts: the error line if there is one, then SHUT_WR, a bounded drain
-// of what the client already sent, then close. Linux AF_UNIX resets the peer when a socket closes with unread data;
-// after the drain the client sees a clean EOF. The error send is best effort: the close goes on either way.
 static MbpStatus CloseClient(int fd, MbpStatus error) {
     int closeFd = fd;
     if ((error != MbpStatusOk) && (MbpProto_WriteError(error, &ipc.reply) == MbpStatusOk)) {
-        (void) send(fd, ipc.reply.text, ipc.reply.len, MSG_NOSIGNAL | MSG_DONTWAIT);         // best effort, see above
+        (void) send(fd, ipc.reply.text, ipc.reply.len, MSG_NOSIGNAL | MSG_DONTWAIT);
     }
-    (void) shutdown(fd, SHUT_WR);           // fails only on a peer already gone, which the close handles too
+    (void) shutdown(fd, SHUT_WR);
     size_t drained = 0u;
     ssize_t got = recv(fd, ipc.drain, sizeof(ipc.drain), MSG_DONTWAIT);
     while ((got > 0) && (drained < DRAIN_MAX)) {
@@ -307,13 +293,12 @@ static MbpStatus ReapIdle(uint64_t nowMs) {
     for (uint16_t i = 0u; i < MAX_CLIENTS; i++) {
         Client *client = &ipc.clients[i];
         if (client->isOpen && ((int64_t) (nowMs - client->lastRequestMs) >= (int64_t) IDLE_CLOSE_MS)) {
-            (void) DropClient(client, MbpStatusOk);         // the slot is free and the descriptor released either way
+            (void) DropClient(client, MbpStatusOk);
         }
     }
     return MbpStatusOk;
 }
 
-// The stop eventfd, the listen socket, then every open client; slotClients maps a client slot to its client.
 static nfds_t FillPollSet(struct pollfd *fds, uint16_t *slotClients) {
     nfds_t count = FIRST_CLIENT_SLOT;
     fds[STOP_SLOT] = (struct pollfd) { .fd = ipc.stopFd, .events = POLLIN, .revents = 0 };
@@ -328,7 +313,6 @@ static nfds_t FillPollSet(struct pollfd *fds, uint16_t *slotClients) {
     return count;
 }
 
-// The poll timeout is the earliest idle deadline, or none while no client is connected.
 static int IdleTimeoutMs(uint64_t nowMs) {
     int64_t earliestMs = -1;
     for (uint16_t i = 0u; i < MAX_CLIENTS; i++) {
@@ -341,7 +325,6 @@ static int IdleTimeoutMs(uint64_t nowMs) {
     return (int) earliestMs;
 }
 
-// A service without its socket server must not live on deaf: the SIGTERM ends it through Mbp_Init's contract.
 static void *IpcMain(void *arg) {
     (void) arg;
     const MbpStatus ret = PollLoop();
@@ -375,8 +358,6 @@ MbpStatus MbpIpc_Start(const MbpCfg *cfg, const char *socketPath) {
     return ret;
 }
 
-// Safe when never started, partly started or already stopped: closes only open descriptors, and the path goes only
-// while it is still the inode this instance bound.
 MbpStatus MbpIpc_Stop(void) {
     MbpStatus firstRet = MbpStatusOk;
     if (ipc.isThreadStarted) {

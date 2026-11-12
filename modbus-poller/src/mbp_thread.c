@@ -23,7 +23,6 @@ static MbpStatus StartWith(pthread_t *thread, MbpThreadEntryFn entry, void *arg,
     return ret;
 }
 
-// pthread functions return their error number instead of setting errno; errno carries it to MBP_ASSERT_ERRNO.
 MbpStatus MbpThread_ToStatus(int osRet, MbpStatus failure) {
     if (osRet == 0) {
         return MbpStatusOk;
@@ -32,7 +31,6 @@ MbpStatus MbpThread_ToStatus(int osRet, MbpStatus failure) {
     return failure;
 }
 
-// Every thread of the module starts here, with MBP_THREAD_STACK_BYTES of stack.
 MbpStatus MbpThread_Start(pthread_t *thread, MbpThreadEntryFn entry, void *arg) {
     pthread_attr_t attr;
     if ((thread == NULL) || (entry == NULL)) {

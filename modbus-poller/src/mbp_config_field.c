@@ -31,7 +31,6 @@ static const Utf8Lead utf8Leads[] = {
     { .leadMask = 0xF8u, .leadBits = 0xF0u, .len = 4u, .minCodePoint = 0x10000u },
 };
 
-// The length of the valid, non-control UTF-8 sequence at bytes, or 0. A NUL inside a sequence fails its check.
 static size_t Utf8SequenceLen(const unsigned char *bytes) {
     if (bytes[0] < 0x80u) {
         return ((bytes[0] < MBP_CFG_FIELD_FIRST_PRINTABLE) || (bytes[0] == MBP_CFG_FIELD_DELETE)) ? 0u : 1u;
@@ -56,7 +55,6 @@ static size_t Utf8SequenceLen(const unsigned char *bytes) {
     return 0u;
 }
 
-// Base 10, digits only: no sign, no space, so "010" is 10.
 MbpStatus MbpCfgField_ParseUint(const char *text, uint32_t min, uint32_t max, uint32_t *value) {
     if ((text == NULL) || (value == NULL)) {
         return MbpStatusParam;
@@ -81,7 +79,6 @@ MbpStatus MbpCfgField_ParseUint(const char *text, uint32_t min, uint32_t max, ui
     return MbpStatusOk;
 }
 
-// strtod skips leading space, so a leading space is refused first; the whole string must be the number.
 MbpStatus MbpCfgField_ParseScale(const char *text, double *value) {
     if ((text == NULL) || (value == NULL)) {
         return MbpStatusParam;

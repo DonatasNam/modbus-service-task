@@ -33,7 +33,6 @@ static const ErrnoStatus errnoStatuses[] = {
     { .errnoValue = EMBMDATA, .status = MbpStatusLinkBadData },
 };
 
-// libmodbus keeps one response timeout per context, used by connect and by reads alike, so every call sets its own.
 static MbpStatus SetResponseTimeout(modbus_t *ctx, uint32_t timeoutMs) {
     return (modbus_set_response_timeout(ctx, timeoutMs / MBP_MS_PER_SEC, (timeoutMs % MBP_MS_PER_SEC) * MBP_US_PER_MS) == 0) ? MbpStatusOk : MbpStatusParam;
 }
@@ -50,7 +49,6 @@ static MbpStatus MapErrno(int errnoValue) {
     return MbpStatusLinkIo;
 }
 
-// The context is kept in the link as soon as it exists, so MbpLink_Close frees it whatever step failed.
 MbpStatus MbpLink_Open(MbpLink *link, const char *host, uint16_t port, uint8_t unitId) {
     if ((link == NULL) || (host == NULL)) {
         return MbpStatusParam;
@@ -84,8 +82,6 @@ MbpStatus MbpLink_Connect(MbpLink *link, uint32_t timeoutMs) {
     return ret;
 }
 
-// A byte timeout of 0 leaves the response timeout bounding the whole reply frame, so a trickling peer cannot
-// stretch one attempt.
 MbpStatus MbpLink_ReadRegs(MbpLink *link, uint8_t funcCode, uint16_t startAddr, uint16_t regCount, uint16_t *regs, uint32_t timeoutMs) {
     if ((link == NULL) || (link->ctx == NULL) || (regs == NULL) || (regCount == 0u) || (regCount > MBP_MAX_REGS)) {
         return MbpStatusParam;

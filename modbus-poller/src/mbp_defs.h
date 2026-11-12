@@ -1,4 +1,3 @@
-// Internal to modbus-poller. External users include mbp.h.
 #ifndef MBP_DEFS_H
 #define MBP_DEFS_H
 
@@ -23,8 +22,7 @@
 
 #define MBP_CT_ASSERT(cond, tag) _Static_assert((cond), #tag)
 
-// One line per call, written whole: stderr is unbuffered and glibc writes one fprintf in one go. The trailing ""
-// keeps the variadic list non-empty for a format without arguments. A failed write to stderr has nowhere to go.
+// The trailing "" keeps the variadic list non-empty for a format without arguments.
 #define MBP_LOG_LINE(prio, fmt, ...) (void) fprintf(stderr, prio fmt "%s\n", __VA_ARGS__)
 #define MBP_LOG_ERR(...) MBP_LOG_LINE("<3>", __VA_ARGS__, "")
 #define MBP_LOG_WARN(...) MBP_LOG_LINE("<4>", __VA_ARGS__, "")

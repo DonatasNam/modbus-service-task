@@ -1,4 +1,3 @@
-// Internal to modbus-poller. External users include mbp.h.
 #ifndef MBP_TEST_CHECK_H
 #define MBP_TEST_CHECK_H
 
@@ -8,7 +7,6 @@
 
 #include "mbp.h"
 
-// Each test executable is one translation unit, so one failure count per process.
 static unsigned mbpTestFailures = 0u;
 
 #define MBP_CHECK(cond)                                                                                                     \

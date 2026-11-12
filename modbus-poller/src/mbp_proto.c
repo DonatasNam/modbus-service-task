@@ -30,8 +30,6 @@ typedef struct {
     const char *code;
 } WireCode;
 
-// The parse arena: MbpProto_Init clears it before the IPC thread starts; afterwards only MbpProto_ParseRequest uses
-// it, on the IPC thread, and resets it at every entry.
 typedef struct {
     _Alignas(max_align_t) unsigned char bytes[ARENA_BYTES];
     size_t used;
@@ -90,7 +88,6 @@ MBP_CT_ASSERT(ARENA_BYTES >= ((((MBP_PROTO_LINE_MAX / 2u) + 1u) * (sizeof(cJSON)
 // table walk and the reply writers use the rest.
 MBP_CT_ASSERT((MBP_PROTO_MAX_DEPTH * CJSON_LEVEL_STACK_BYTES) <= (MBP_THREAD_STACK_BYTES / 4u), cjson_recursion_fits_ipc_stack);
 
-// The depth scan keeps cJSON's recursion bounded; a NUL byte or a \u0000 escape is refused, so an id is never cut short.
 static MbpStatus CheckLine(const char *line, size_t len) {
     uint32_t depth = 0u;
     bool isInString = false;
@@ -151,7 +148,6 @@ static MbpStatus ReadRequest(const cJSON *root, MbpProtoRequest *request) {
     return ret;
 }
 
-// An id too long for any configured id cannot match one: it is unknown, never truncated into a match.
 static MbpStatus ReadId(const cJSON *root, const char *key, MbpStatus tooLong, char *dest, size_t destSize) {
     const cJSON *item = cJSON_GetObjectItemCaseSensitive(root, key);
     if (!cJSON_IsString(item) || (item->valuestring == NULL)) {
@@ -182,7 +178,6 @@ static MbpStatus Append(MbpProtoBuf *buf, const char *format, ...) {
     return MbpStatusOk;
 }
 
-// Config strings hold no control characters (validated at load), so only " and \ need escaping.
 static MbpStatus AppendString(MbpProtoBuf *buf, const char *key, const char *text) {
     MbpStatus ret = Append(buf, "%s\"", key);
     MBP_ASSERT_SILENT(ret);
@@ -231,7 +226,6 @@ static MbpStatus AppendDevice(MbpProtoBuf *buf, const MbpCfg *cfg, uint16_t stat
     return Append(buf, ",\"port\":%u,\"unit\":%u,\"enabled\":%s,\"points\":%u}", (unsigned) conn->port, (unsigned) station->unitId, conn->isEnabled ? "true" : "false", (unsigned) station->pointCount);
 }
 
-// A value is printed only when the point holds a reading, so a finite number is all %.10g ever meets.
 static MbpStatus AppendPoint(MbpProtoBuf *buf, const MbpCfgStation *station, const MbpStoreStation *copy, uint16_t pointIndex) {
     const MbpCfgPoint *cfgPoint = &station->points[pointIndex];
     const MbpStorePoint *point = &copy->points[pointIndex];
@@ -265,7 +259,6 @@ static const char *WireCodeOf(MbpStatus status) {
     return "internal";
 }
 
-// An exhausted arena makes cJSON fail the parse; the flag turns that into bad_request rather than internal.
 static void *ArenaAlloc(size_t size) {
     const size_t aligned = ((size + ARENA_ALIGN - 1u) / ARENA_ALIGN) * ARENA_ALIGN;
     if ((aligned < size) || (aligned > (ARENA_BYTES - arena.used))) {
@@ -277,7 +270,6 @@ static void *ArenaAlloc(size_t size) {
     return block;
 }
 
-// Blocks are reclaimed all at once when the next parse resets the arena.
 static void ArenaFree(void *block) {
     (void) block;
 }

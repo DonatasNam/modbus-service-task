@@ -1,4 +1,3 @@
-// Internal to modbus-poller. External users include mbp.h.
 #ifndef MBP_HEALTH_H
 #define MBP_HEALTH_H
 
@@ -10,7 +9,6 @@
 #define MBP_HEALTH_BACKOFF_MIN_MS 1000u
 #define MBP_HEALTH_BACKOFF_MAX_MS 30000u
 
-// wire protocol v1: the names of these states (MbpHealth_StateName); clients store these; additive only
 typedef enum {
     MbpHealthStateConnecting = 0,
     MbpHealthStateOnline,
@@ -28,13 +26,12 @@ typedef enum {
     MbpHealthStepExhausted,                 // a link fault with no attempt left
 } MbpHealthStep;
 
-// Every field of one station's link health. The station's worker owns it; the store only publishes copies.
 // Times are wall-clock epoch ms, 0 = never.
 typedef struct {
     MbpHealthState state;
     uint64_t sinceMs;
     uint64_t lastOkMs;
-    MbpStatus lastError;                    // the latest link-level failure, Ok while there has been none
+    MbpStatus lastError;
     uint64_t readsOk;
     uint64_t readsFailed;
     uint64_t reconnects;

@@ -1,4 +1,3 @@
-// Internal to modbus-poller. External users include mbp.h.
 #ifndef MBP_PROTO_H
 #define MBP_PROTO_H
 
@@ -13,7 +12,6 @@
 #define MBP_PROTO_MAX_DEPTH 4u
 #define MBP_PROTO_ESCAPE_GROWTH 2u          // only " and \ are escaped: config strings hold no control characters
 
-// wire protocol v1: the command names; clients send these; additive only
 typedef enum {
     MbpProtoCmdList = 0,
     MbpProtoCmdStatus,
@@ -22,14 +20,12 @@ typedef enum {
     MbpProtoCmdCount,
 } MbpProtoCmd;
 
-// The ids are copies, so nothing points into the parse arena after MbpProto_ParseRequest returns.
 typedef struct {
     MbpProtoCmd cmd;
     char device[MBP_CFG_ID_MAX + 1u];
     char point[MBP_CFG_ID_MAX + 1u];
 } MbpProtoRequest;
 
-// Caller-owned reply text; every writer replaces the content with one whole line, newline included.
 typedef struct {
     char *text;
     size_t size;

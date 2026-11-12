@@ -56,14 +56,12 @@ static MbpStatus ServeValue(const MbpCfg *cfg, const MbpProtoRequest *request, M
     return MbpProto_WriteValue(&cfg->stations[stationIndex], &copy, pointIndex, reply);
 }
 
-// The store lock is held only for the slot copy; the reply is formatted from the copy.
 static MbpStatus CopyDevice(const MbpCfg *cfg, const char *deviceId, uint16_t *stationIndex, MbpStoreStation *copy) {
     MbpStatus ret = MbpCfg_FindStation(cfg, deviceId, stationIndex);
     MBP_ASSERT_SILENT(ret);
     return MbpStore_CopyStation(*stationIndex, copy);
 }
 
-// On a failure the reply holds nothing usable: the caller writes the error reply.
 MbpStatus MbpServe_Line(const MbpCfg *cfg, const char *line, size_t len, MbpProtoBuf *reply) {
     MbpProtoRequest request;
     MbpStatus ret = ((cfg != NULL) && (line != NULL) && (reply != NULL)) ? MbpStatusOk : MbpStatusParam;

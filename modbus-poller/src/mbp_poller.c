@@ -16,8 +16,6 @@
 #include "mbp_store.h"
 #include "mbp_thread.h"
 
-// One per enabled station. After MbpPoll_Start a worker belongs to its own thread; the main thread touches it again
-// only in MbpPoll_Stop, after the join.
 typedef struct {
     const MbpCfgConn *conn;
     const MbpCfgStation *station;
@@ -71,7 +69,6 @@ static MbpStatus InitStopCond(void) {
     return ret;
 }
 
-// The deadlines are CLOCK_MONOTONIC milliseconds from MbpClock_MonoMs, so the condvar waits on that clock.
 static MbpStatus InitStopCondWith(pthread_condattr_t *attr) {
     MbpStatus ret = MbpThread_ToStatus(pthread_condattr_setclock(attr, CLOCK_MONOTONIC), MbpStatusOs);
     MBP_ASSERT_ERRNO(ret);
@@ -83,7 +80,6 @@ static MbpStatus InitStopCondWith(pthread_condattr_t *attr) {
     return ret;
 }
 
-// The worker is counted before its first step, so MbpPoll_Stop closes its link whatever step fails.
 static MbpStatus StartWorker(const MbpCfg *cfg, uint16_t stationIndex) {
     const MbpCfgStation *station = &cfg->stations[stationIndex];
     const MbpCfgConn *conn = &cfg->conns[station->connIndex];
@@ -126,7 +122,6 @@ static MbpStatus RequestStop(void) {
     return ret;
 }
 
-// Ends with MbpStatusStopped on a stop, with any other status on a failure the worker cannot go on from.
 static MbpStatus WorkerLoop(Worker *worker) {
     MbpStatus ret = MbpStatusOk;
     while (ret == MbpStatusOk) {
@@ -158,7 +153,6 @@ static MbpStatus WorkerStep(Worker *worker) {
     return FinishRead(worker, pointIndex, ret);
 }
 
-// A failed connect waits the backoff before the next one.
 static MbpStatus ConnectLink(Worker *worker) {
     uint64_t wallMs = 0u;
     uint64_t nowMs = 0u;
@@ -183,7 +177,6 @@ static MbpStatus ConnectLink(Worker *worker) {
     return WaitUntil(nowMs + worker->health.waitMs);
 }
 
-// Returns what MbpHealth_OnRead classifies: Ok, a point fault, a link fault, or MbpStatusStopped.
 static MbpStatus ReadPoint(Worker *worker, uint16_t pointIndex) {
     const MbpCfgPoint *point = &worker->station->points[pointIndex];
     uint16_t regs[MBP_MAX_REGS] = { 0u };
@@ -204,8 +197,6 @@ static MbpStatus ReadPoint(Worker *worker, uint16_t pointIndex) {
     return decodeRet;
 }
 
-// Up to 1 + request_retries attempts, the stop flag checked before each. A point fault is stored here, where it is
-// classified; the link faults go back to the loop.
 static MbpStatus ReadAttempts(Worker *worker, uint16_t pointIndex, uint16_t *regs) {
     const MbpCfgConn *conn = worker->conn;
     const MbpCfgPoint *point = &worker->station->points[pointIndex];
@@ -239,8 +230,6 @@ static MbpStatus ReadAttempts(Worker *worker, uint16_t pointIndex, uint16_t *reg
     return result;
 }
 
-// A retry after a timeout, bad data or an I/O error goes over a fresh connection, so a late reply on the old
-// socket is never read as the retry's reply.
 static MbpStatus Reconnect(Worker *worker) {
     uint64_t wallMs = 0u;
     MbpStatus ret = MbpLink_Disconnect(&worker->link);
@@ -254,7 +243,6 @@ static MbpStatus Reconnect(Worker *worker) {
     return MbpHealth_OnConnect(&worker->health, MbpStatusOk, worker->conn->connectRetries, wallMs);
 }
 
-// A read that failed at link level leaves the station in error: the link is dropped and the worker backs off.
 static MbpStatus FinishRead(Worker *worker, uint16_t pointIndex, MbpStatus result) {
     uint64_t wallMs = 0u;
     uint64_t nowMs = 0u;
@@ -306,7 +294,6 @@ static MbpStatus CheckStop(void) {
     return isStopping ? MbpStatusStopped : MbpStatusOk;
 }
 
-// The one unlock follows WaitLocked on every path, so WaitLocked may return through its macros.
 static MbpStatus WaitUntil(uint64_t deadlineMs) {
     MbpStatus ret = MbpThread_ToStatus(pthread_mutex_lock(&poller.mutex), MbpStatusOs);
     MBP_ASSERT_SILENT(ret);
@@ -316,8 +303,6 @@ static MbpStatus WaitUntil(uint64_t deadlineMs) {
     return waitRet;
 }
 
-// Called with the mutex held. The stop flag is the predicate, read under the mutex, so a stop requested while the
-// worker was inside libmodbus is seen here.
 static MbpStatus WaitLocked(uint64_t deadlineMs) {
     uint64_t nowMs = 0u;
     MbpStatus ret = MbpClock_MonoMs(&nowMs);
@@ -332,7 +317,6 @@ static MbpStatus WaitLocked(uint64_t deadlineMs) {
     return poller.isStopRequested ? MbpStatusStopped : MbpStatusOk;
 }
 
-// A wait error other than ETIMEDOUT is a failure, never a timeout.
 static MbpStatus TimedWait(uint64_t deadlineMs) {
     const struct timespec deadline = { .tv_sec = (time_t) (deadlineMs / MBP_MS_PER_SEC), .tv_nsec = (long) ((deadlineMs % MBP_MS_PER_SEC) * MBP_NS_PER_MS) };
     const int waitRet = pthread_cond_timedwait(&poller.stopCond, &poller.mutex, &deadline);
@@ -386,7 +370,6 @@ MbpStatus MbpPoll_Start(const MbpCfg *cfg) {
     return ret;
 }
 
-// Safe when never started, partly started or already stopped: joins only started threads, closes only opened links.
 MbpStatus MbpPoll_Stop(void) {
     MbpStatus firstRet = MbpStatusOk;
     if (poller.isStopCondInit) {
