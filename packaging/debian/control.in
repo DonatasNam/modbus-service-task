@@ -1,0 +1,13 @@
+Package: modbus-poller
+Version: @VERSION@
+Architecture: @ARCH@
+Maintainer: modbus-poller pilot <root@localhost>
+Depends: libc6, libmodbus5 (>= 3.1.6), libcjson1 (>= 1.7.13)
+Section: net
+Priority: optional
+Description: Modbus TCP polling service with a Unix socket API
+ modbus-pollerd polls the Modbus TCP devices described in
+ /etc/modbus-poller/config.json, one thread and one connection per device,
+ and keeps their latest engineering values in memory. Client applications
+ read them over /run/modbus-poller/poller.sock (group modbus-poller) with
+ newline-delimited JSON, or through the modbus-poller-sdk Python package.

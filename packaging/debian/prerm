@@ -1,0 +1,17 @@
+#!/bin/sh
+# Stops the unit before the files go (remove or upgrade); disables it only on remove.
+set -e
+
+if [ -d /run/systemd/system ]; then
+    case "$1" in
+        remove | deconfigure)
+            systemctl stop modbus-poller.service || true
+            systemctl disable modbus-poller.service || true
+            ;;
+        upgrade)
+            systemctl stop modbus-poller.service || true
+            ;;
+    esac
+fi
+
+exit 0

@@ -1,0 +1,20 @@
+[Unit]
+Description=Modbus TCP polling service (modbus-pollerd)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=modbus-poller
+Group=modbus-poller
+RuntimeDirectory=modbus-poller
+ExecStart=/usr/sbin/modbus-pollerd -c /etc/modbus-poller/config.json -s /run/modbus-poller/poller.sock
+Restart=on-failure
+RestartSec=2
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,15 @@
+#!/bin/sh
+# Creates the service user and group on first install, then enables and starts the unit.
+set -e
+
+if [ "$1" = "configure" ]; then
+    if ! getent passwd modbus-poller >/dev/null; then
+        adduser --system --group --no-create-home --home /nonexistent modbus-poller
+    fi
+    if [ -d /run/systemd/system ]; then
+        systemctl daemon-reload
+        systemctl enable --now modbus-poller.service
+    fi
+fi
+
+exit 0
