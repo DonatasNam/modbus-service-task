@@ -29,13 +29,12 @@ static MbpStatus ParseArgs(int argc, char *argv[], const char **configPath, cons
         option = getopt(argc, argv, "c:s:");
     }
     if (isUsageError || (optind != argc)) {
-        (void) fprintf(stderr, "<3>usage: %s [-c config] [-s socket]\n", argv[0]);       // stderr has nowhere to report to
+        (void) fprintf(stderr, "<3>usage: %s [-c config] [-s socket]\n", argv[0]);
         return MbpStatusParam;
     }
     return MbpStatusOk;
 }
 
-// The worker and IPC threads inherit this mask, so SIGINT and SIGTERM reach only sigwait in main.
 static MbpStatus BlockStopSignals(sigset_t *stopSignals) {
     struct sigaction ignore;
     (void) memset(&ignore, 0, sizeof(ignore));
@@ -56,7 +55,7 @@ static MbpStatus WaitForStop(const sigset_t *stopSignals) {
     int signalNumber = 0;
     const int waitRet = sigwait(stopSignals, &signalNumber);
     if (waitRet != 0) {
-        (void) fprintf(stderr, "<3>sigwait failed: %s\n", strerror(waitRet));       // stderr has nowhere to report to
+        (void) fprintf(stderr, "<3>sigwait failed: %s\n", strerror(waitRet));
         return MbpStatusOs;
     }
     return MbpStatusOk;
@@ -71,7 +70,7 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
     if (BlockStopSignals(&stopSignals) != MbpStatusOk) {
-        (void) fprintf(stderr, "<3>signal setup failed\n");     // stderr has nowhere to report to
+        (void) fprintf(stderr, "<3>signal setup failed\n");
         return EXIT_FAILURE;
     }
     if (Mbp_Init(configPath, socketPath) != MbpStatusOk) {

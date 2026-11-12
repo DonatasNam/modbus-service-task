@@ -1,4 +1,3 @@
-// Internal to modbus-poller. External users include mbp.h.
 #ifndef MBP_STORE_H
 #define MBP_STORE_H
 
@@ -10,7 +9,6 @@
 #include "mbp_defs.h"
 #include "mbp_health.h"
 
-// wire protocol v1: the names of these qualities; clients store these; additive only
 typedef enum {
     MbpStoreQualityNone = 0,                // never read
     MbpStoreQualityGood,
@@ -23,7 +21,7 @@ typedef struct {
     double value;
     uint64_t tsMs;                          // wall-clock epoch ms of the read behind value, 0 = never
     MbpStoreQuality quality;
-    MbpStatus error;                        // the point's latest failure, Ok while good
+    MbpStatus error;
     bool hasValue;
 } MbpStorePoint;
 

@@ -17,7 +17,6 @@ typedef struct {
 static MbpStatus InitSteps(const char *configPath, const char *socketPath);
 static uint32_t CountPoints(void);
 
-// The main thread owns cfg: MbpCfg_Load writes it before any thread starts; every thread only reads it afterwards.
 static MbpCfg cfg;
 
 // wire protocol v1: these texts travel as error and last_error; clients store these; additive only
@@ -103,7 +102,6 @@ const char *Mbp_StatusStr(MbpStatus status) {
     return "unknown status";
 }
 
-// Mbp_Deinit is the one cleanup path: the start functions never unwind themselves.
 MbpStatus Mbp_Init(const char *configPath, const char *socketPath) {
     if ((configPath == NULL) || (socketPath == NULL)) {
         return MbpStatusParam;
@@ -111,7 +109,7 @@ MbpStatus Mbp_Init(const char *configPath, const char *socketPath) {
     const MbpStatus ret = InitSteps(configPath, socketPath);
     if (ret != MbpStatusOk) {
         MBP_LOG_ERR("start failed: %s", Mbp_StatusStr(ret));
-        (void) Mbp_Deinit();                // the init's own failure is what returns
+        (void) Mbp_Deinit();
         return ret;
     }
     MBP_LOG_INFO("started: %u connections, %u stations, %u points, socket %s", (unsigned) cfg.connCount, (unsigned) cfg.stationCount, (unsigned) CountPoints(), socketPath);

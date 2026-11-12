@@ -29,8 +29,6 @@ static MbpStatus CopyPath(MbpIpcPath *path, const char *socketPath) {
     return ret;
 }
 
-// One instance per path: only a refused probe means a stale file. An answer, or any other error (a stalled
-// instance's full backlog gives EAGAIN), leaves the path alone and fails the start.
 static MbpStatus ProbePath(const MbpIpcPath *path) {
     struct stat info;
     if (lstat(path->socketPath, &info) != 0) {
@@ -73,8 +71,6 @@ static MbpStatus ProbeSocket(const MbpIpcPath *path) {
     return ret;
 }
 
-// The inode is recorded right after bind, so MbpIpcPath_Unlink never removes a path another instance has taken
-// over. Nobody can connect before listen(), so the mode is set before anyone can use the socket.
 static MbpStatus Bind(MbpIpcPath *path, int listenFd) {
     struct sockaddr_un addr;
     struct stat info;
@@ -99,7 +95,6 @@ static void FillAddr(const MbpIpcPath *path, struct sockaddr_un *addr) {
     (void) memcpy(addr->sun_path, path->socketPath, sizeof(addr->sun_path));
 }
 
-// *listenFd is written as soon as the socket exists, so the caller's stop closes it whatever step fails after.
 MbpStatus MbpIpcPath_Listen(MbpIpcPath *path, const char *socketPath, int *listenFd) {
     if ((path == NULL) || (socketPath == NULL) || (listenFd == NULL)) {
         return MbpStatusParam;
@@ -122,7 +117,6 @@ MbpStatus MbpIpcPath_Listen(MbpIpcPath *path, const char *socketPath, int *liste
     return ret;
 }
 
-// Removes the path only while it is still the inode this instance bound. Safe when never bound or run twice.
 MbpStatus MbpIpcPath_Unlink(MbpIpcPath *path) {
     struct stat info;
     if (path == NULL) {

@@ -5,12 +5,10 @@
 
 static int64_t DiffMs(uint64_t laterMs, uint64_t earlierMs);
 
-// Monotonic milliseconds never wrap within an uptime; the signed difference keeps comparisons right if they did.
 static int64_t DiffMs(uint64_t laterMs, uint64_t earlierMs) {
     return (int64_t) (laterMs - earlierMs);
 }
 
-// The earliest due point wins, the lowest index on a tie; a point already due waits 0.
 MbpStatus MbpSched_PickNext(const uint64_t *dueMs, uint16_t count, uint64_t nowMs, uint16_t *index, uint64_t *waitMs) {
     if ((dueMs == NULL) || (count == 0u) || (index == NULL) || (waitMs == NULL)) {
         return MbpStatusParam;
@@ -27,7 +25,6 @@ MbpStatus MbpSched_PickNext(const uint64_t *dueMs, uint16_t count, uint64_t nowM
     return MbpStatusOk;
 }
 
-// Next due = due + cycle; after an overrun, now + cycle, so a late station never bursts to catch up.
 MbpStatus MbpSched_Advance(uint64_t *dueMs, uint32_t cycleMs, uint64_t nowMs) {
     if ((dueMs == NULL) || (cycleMs == 0u)) {
         return MbpStatusParam;
@@ -47,10 +44,6 @@ MbpStatus MbpSched_MakeAllDue(uint64_t *dueMs, uint16_t count, uint64_t nowMs) {
     return MbpStatusOk;
 }
 
-// A link loss leaves every point stale, so every point is due by now and is read right after the reconnect, whatever
-// its cycle. A point already overdue keeps its earlier due time, so it stays ahead of the points pulled in: with any
-// number of failing points, every overdue point is reached in turn and none starves. The point whose read failed keeps
-// its own next due time, at most retryMs away, so it comes after all the others and a long-cycle point is retried.
 MbpStatus MbpSched_RearmAfterLoss(uint64_t *dueMs, uint16_t count, uint16_t failedIndex, uint64_t retryMs, uint64_t nowMs) {
     if ((dueMs == NULL) || (failedIndex >= count)) {
         return MbpStatusParam;

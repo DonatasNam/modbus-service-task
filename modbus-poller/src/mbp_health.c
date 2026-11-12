@@ -78,7 +78,6 @@ MbpStatus MbpHealth_Disable(MbpHealth *health, uint64_t nowWallMs) {
     return MbpStatusOk;
 }
 
-// A connect success resets the failure count, never the backoff: a gateway can accept in front of a dead meter.
 MbpStatus MbpHealth_OnConnect(MbpHealth *health, MbpStatus result, uint8_t connectRetries, uint64_t nowWallMs) {
     if (health == NULL) {
         return MbpStatusParam;
@@ -116,8 +115,6 @@ MbpStatus MbpHealth_NextStep(MbpStatus result, uint8_t attempt, uint8_t retries,
     return MbpStatusOk;
 }
 
-// The state follows the link: any reply makes the station online, a point fault included; only a good read resets
-// the backoff.
 MbpStatus MbpHealth_OnRead(MbpHealth *health, MbpStatus result, uint64_t nowWallMs) {
     if (health == NULL) {
         return MbpStatusParam;

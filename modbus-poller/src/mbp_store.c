@@ -9,8 +9,6 @@
 #include "mbp_store.h"
 #include "mbp_thread.h"
 
-// storeMutex guards every slot of store.stations. Each worker thread writes only its own station's slot; the IPC
-// thread copies slots out. Init and Deinit run on the main thread while no worker or IPC thread runs.
 typedef struct {
     bool isInit;
     uint16_t stationCount;
@@ -56,8 +54,6 @@ static void WriteValue(MbpStorePoint *point, double value, uint64_t tsMs) {
     point->hasValue = true;
 }
 
-// A reply that decodes to no finite value is a reading of its own (bad, no value); any other failure keeps the last
-// reading and marks it stale.
 static void WritePointError(MbpStorePoint *point, MbpStatus error, uint64_t tsMs) {
     point->error = error;
     if (error == MbpStatusDecNotFinite) {
@@ -135,7 +131,6 @@ MbpStatus MbpStore_PutHealth(uint16_t stationIndex, const MbpHealth *health) {
     return Unlock();
 }
 
-// The health and the stale marks go out in one lock section, so a reader never sees error beside good points.
 MbpStatus MbpStore_PutLinkLoss(uint16_t stationIndex, const MbpHealth *health) {
     MbpStatus ret = (health != NULL) ? CheckStation(stationIndex) : MbpStatusParam;
     MBP_ASSERT_SILENT(ret);

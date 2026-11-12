@@ -1,4 +1,3 @@
-// Internal to modbus-poller. External users include mbp.h.
 #ifndef MBP_IPC_PATH_H
 #define MBP_IPC_PATH_H
 
@@ -11,7 +10,6 @@
 
 #define MBP_IPC_PATH_BYTES sizeof(((struct sockaddr_un *) NULL)->sun_path)
 
-// The socket path one instance owns. isBound and the inode tell MbpIpcPath_Unlink whether the path is still ours.
 typedef struct {
     char socketPath[MBP_IPC_PATH_BYTES];
     bool isBound;

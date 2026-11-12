@@ -39,7 +39,6 @@ typedef struct {
     int32_t value;
 } Choice;
 
-// Where the load stands, for the one error line: an index is NO_INDEX outside its array, field NULL for an entry.
 typedef struct {
     MbpCfg *cfg;
     int32_t connIndex;
@@ -333,7 +332,6 @@ static MbpStatus LoadMeta(Loader *loader, const cJSON *pointJson, MbpCfgPoint *p
     return ret;
 }
 
-// Keeps a printable excerpt of every string read, so the failing step needs no extra bookkeeping.
 static MbpStatus GetString(Loader *loader, const cJSON *object, const char *key, const char **text) {
     const cJSON *item = cJSON_GetObjectItemCaseSensitive(object, key);
     MoveTo(loader, key);
@@ -466,7 +464,7 @@ MbpStatus MbpCfg_Load(const char *path, MbpCfg *cfg) {
         MBP_LOG_ERR("config: %s: %s", path, Mbp_StatusStr(ret));
         return ret;
     }
-    cJSON *root = cJSON_ParseWithLengthOpts(text, textLen + 1u, &parseEnd, true);    // ReadStream's terminator ends the text: anything after the object fails
+    cJSON *root = cJSON_ParseWithLengthOpts(text, textLen + 1u, &parseEnd, true);
     const size_t errorOffset = (parseEnd != NULL) ? (size_t) (parseEnd - text) : 0u;
     free(text);
     if (root == NULL) {

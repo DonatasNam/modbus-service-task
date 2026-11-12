@@ -37,7 +37,6 @@ static uint16_t SwapBytes(uint16_t reg) {
     return (uint16_t) ((uint16_t) (reg << 8) | (uint16_t) (reg >> 8));
 }
 
-// One register: only the byte swap counts. Two: the word swap picks which register holds AB, then the byte swap.
 static uint32_t Assemble(const uint16_t *regs, uint16_t regCount, const OrderRule *rule) {
     if (regCount == MBP_DEC_REGS_16) {
         return rule->isByteSwapped ? SwapBytes(regs[0]) : regs[0];

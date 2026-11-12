@@ -1,4 +1,3 @@
-// Internal to modbus-poller. External users include mbp.h.
 #ifndef MBP_CONFIG_H
 #define MBP_CONFIG_H
 
@@ -48,7 +47,6 @@ typedef struct {
     bool isEnabled;
 } MbpCfgConn;
 
-// Stations of every connection in file order; a station names its connection by index.
 typedef struct {
     uint16_t connCount;
     uint16_t stationCount;

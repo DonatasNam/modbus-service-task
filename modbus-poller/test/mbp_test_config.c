@@ -52,7 +52,6 @@ static const InvalidCase invalidCases[] = {
     { .file = "trailing_text.json", .expected = MbpStatusCfgJson },
 };
 
-// Static, not on the stack: an MbpCfg is about 400 KB.
 static MbpCfg cfg;
 
 static MbpStatus LoadFile(const char *root, const char *relPath) {

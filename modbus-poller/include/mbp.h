@@ -37,7 +37,7 @@ typedef enum {
     MbpStatusLinkExcGatewayPath = -50,      // Modbus exception 0A
     MbpStatusLinkExcGatewayTarget = -51,    // Modbus exception 0B
     MbpStatusLinkExcOther = -52,            // any other exception code
-    MbpStatusIpcSocket = -60,               // the path is empty or too long, not a socket, or cannot be checked or removed; the listen socket() or listen() failed
+    MbpStatusIpcSocket = -60,               // the path is unusable, or socket() or listen() failed
     MbpStatusIpcBind = -61,                 // bind, the stat of the bound inode, or chmod failed
     MbpStatusIpcInUse = -62,                // the path answers, or its probe failed other than refused; left in place
     MbpStatusIpcBusy = -63,
